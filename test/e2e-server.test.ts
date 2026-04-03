@@ -1,32 +1,51 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
+import type { Server } from 'node:http';
 
-import { createApp } from '../lib/server.js';
+import { createApp } from '../lib/server.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-let baseUrl;
-let server;
-let projectRoot;
+let baseUrl: string;
+let server: Server;
+let projectRoot: string;
 
-function api(path, opts = {}) {
+interface ApiResponse<T = Record<string, unknown>> {
+  status: number;
+  data: T;
+}
+
+function api<T = Record<string, unknown>>(path: string, opts: RequestInit & { body?: unknown } = {}): Promise<ApiResponse<T>> {
   return fetch(`${baseUrl}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   }).then(async (r) => {
-    const data = await r.json().catch(() => ({}));
+    const data = await r.json().catch(() => ({})) as T;
     return { status: r.status, data };
   });
 }
 
-function createMockProject(opts = {}) {
+interface MockProjectOptions {
+  subDir?: string;
+  devCommand?: string;
+  devPort?: number;
+  portFlag?: string | null;
+  setup?: string;
+}
+
+interface MockProject {
+  root: string;
+  config: Record<string, unknown>;
+}
+
+function createMockProject(opts: MockProjectOptions = {}): MockProject {
   const root = mkdtempSync(join(tmpdir(), 'sanjang-e2e-'));
   execSync('git init', { cwd: root, stdio: 'pipe' });
   execSync('git checkout -b main', { cwd: root, stdio: 'pipe' });
@@ -90,18 +109,19 @@ before(async () => {
 
   const result = await createApp(projectRoot, { port: TEST_PORT });
   server = result.server;
-  await new Promise((resolve) => server.listen(TEST_PORT, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(TEST_PORT, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${TEST_PORT}`;
 });
 
 after(async () => {
   // Stop all camps
-  const { data: camps } = await api('/api/playgrounds');
+  interface CampData { name: string }
+  const { data: camps } = await api<CampData[]>('/api/playgrounds');
   for (const camp of camps) {
     await api(`/api/playgrounds/${camp.name}/stop`, { method: 'POST' });
     await api(`/api/playgrounds/${camp.name}`, { method: 'DELETE' });
   }
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   rmSync(projectRoot, { recursive: true, force: true });
 });
 
@@ -120,7 +140,7 @@ describe('e2e — cache', () => {
     const { status, data } = await api('/api/cache/rebuild', { method: 'POST' });
     assert.equal(status, 200);
     assert.equal(data.success, true);
-    assert.ok(data.duration >= 0);
+    assert.ok((data.duration as number) >= 0);
   });
 
   it('cache is valid after rebuild', async () => {
@@ -131,7 +151,7 @@ describe('e2e — cache', () => {
 
 describe('e2e — camp CRUD', () => {
   it('GET /api/playgrounds returns empty array initially', async () => {
-    const { data } = await api('/api/playgrounds');
+    const { data } = await api<unknown[]>('/api/playgrounds');
     assert.ok(Array.isArray(data));
   });
 
@@ -148,14 +168,14 @@ describe('e2e — camp CRUD', () => {
 
   it('camp reaches stopped status (cache applied or setup done)', async () => {
     // Wait for setup to complete (cache or setup command)
-    let camp;
+    let camp: Record<string, unknown> | undefined;
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const { data } = await api('/api/playgrounds');
+      const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
       camp = data.find((c) => c.name === 'test-crud');
       if (camp?.status === 'stopped' || camp?.status === 'error') break;
     }
-    assert.equal(camp.status, 'stopped');
+    assert.equal(camp!.status, 'stopped');
   });
 
   it('POST /api/playgrounds/:name/start starts the camp', async () => {
@@ -164,14 +184,14 @@ describe('e2e — camp CRUD', () => {
   });
 
   it('camp reaches running status', async () => {
-    let camp;
+    let camp: Record<string, unknown> | undefined;
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
-      const { data } = await api('/api/playgrounds');
+      const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
       camp = data.find((c) => c.name === 'test-crud');
       if (camp?.status === 'running' || camp?.status === 'error') break;
     }
-    assert.equal(camp.status, 'running');
+    assert.equal(camp!.status, 'running');
   });
 
   it('POST /api/playgrounds/:name/stop stops the camp', async () => {
@@ -205,7 +225,7 @@ describe('e2e — multiple camps', () => {
   it('lists both camps', async () => {
     // Wait for setup
     await new Promise((r) => setTimeout(r, 3000));
-    const { data } = await api('/api/playgrounds');
+    const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
     const names = data.map((c) => c.name);
     assert.ok(names.includes('multi-a') || names.includes('multi-b'));
   });
@@ -220,7 +240,7 @@ describe('e2e — snapshots', () => {
     // Wait for setup
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const { data } = await api('/api/playgrounds');
+      const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
       if (data.find((c) => c.name === 'snap-test')?.status === 'stopped') break;
     }
   });
@@ -240,7 +260,7 @@ describe('e2e — snapshots', () => {
   });
 
   it('GET /api/playgrounds/:name/snapshots lists snapshots', async () => {
-    const { status, data } = await api('/api/playgrounds/snap-test/snapshots');
+    const { status, data } = await api<unknown[]>('/api/playgrounds/snap-test/snapshots');
     assert.equal(status, 200);
     assert.ok(Array.isArray(data));
   });
@@ -254,7 +274,7 @@ describe('e2e — actions and revert', () => {
     });
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const { data } = await api('/api/playgrounds');
+      const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
       if (data.find((c) => c.name === 'action-test')?.status === 'stopped') break;
     }
   });
@@ -273,7 +293,7 @@ describe('e2e — actions and revert', () => {
   });
 
   it('GET /api/playgrounds/:name/changes includes actions', async () => {
-    const { status, data } = await api('/api/playgrounds/action-test/changes');
+    const { status, data } = await api<{ actions: unknown[] }>('/api/playgrounds/action-test/changes');
     assert.equal(status, 200);
     assert.ok(Array.isArray(data.actions));
     assert.ok(data.actions.length >= 1);
@@ -296,7 +316,7 @@ describe('e2e — reset', () => {
     });
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const { data } = await api('/api/playgrounds');
+      const { data } = await api<Array<Record<string, unknown>>>('/api/playgrounds');
       if (data.find((c) => c.name === 'reset-test')?.status === 'stopped') break;
     }
   });
@@ -317,7 +337,8 @@ describe('e2e — reset', () => {
 describe('e2e — quick start', () => {
   after(async () => {
     // Clean up any camp created
-    const { data: camps } = await api('/api/playgrounds');
+    interface CampData { name: string }
+    const { data: camps } = await api<CampData[]>('/api/playgrounds');
     for (const camp of camps) {
       if (camp.name.startsWith('test-')) {
         await api(`/api/playgrounds/${camp.name}/stop`, { method: 'POST' }).catch(() => {});
@@ -327,7 +348,7 @@ describe('e2e — quick start', () => {
   });
 
   it('POST /api/quick-start creates camp from description', async () => {
-    const { status, data } = await api('/api/quick-start', {
+    const { status } = await api('/api/quick-start', {
       method: 'POST',
       body: { description: 'test quick start feature' },
     });
@@ -338,7 +359,7 @@ describe('e2e — quick start', () => {
 
 describe('e2e — branches and ports', () => {
   it('GET /api/branches returns branch list', async () => {
-    const { status, data } = await api('/api/branches');
+    const { status, data } = await api<unknown[]>('/api/branches');
     assert.equal(status, 200);
     assert.ok(Array.isArray(data));
   });

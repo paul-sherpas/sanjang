@@ -1,11 +1,12 @@
-import { createServer } from 'node:http';
-import { execSync, spawnSync, spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, copyFileSync, unlinkSync } from 'node:fs';
+import { createServer, Server } from 'node:http';
+import { spawnSync, spawn, ChildProcess } from 'node:child_process';
+import { readFileSync, writeFileSync, copyFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, resolve } from 'node:path';
 
 import express from 'express';
-import { WebSocketServer } from 'ws';
+import type { Request, Response } from 'express';
+import { WebSocketServer, WebSocket } from 'ws';
 
 import { getAll, getOne, upsert, remove, setCampsDir } from './engine/state.ts';
 import { allocate, scanPorts, setPortConfig } from './engine/ports.ts';
@@ -20,22 +21,75 @@ import { detectWarp, openWarpTab } from './engine/warp.ts';
 import { slugify } from './engine/naming.ts';
 import { isCacheValid, applyCacheToWorktree, buildCache } from './engine/cache.ts';
 
+import type { Camp, SanjangConfig, BroadcastMessage } from './types.ts';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ChangedFile {
+  path: string;
+  status: string;
+}
+
+interface ActionEntry {
+  description: string;
+  files: string[];
+  timestamp?: string;
+  ts?: number;
+}
+
+interface CreateAppOptions {
+  port?: number;
+}
+
+interface CreateAppResult {
+  app: express.Application;
+  server: Server;
+  port: number;
+  runningTasks: Map<string, ChildProcess>;
+  warpStatus: { installed: boolean };
+}
+
+interface WorkItem {
+  type: 'pr' | 'camp';
+  title: string;
+  prNumber?: number;
+  prUrl?: string;
+  branch: string;
+  updatedAt?: string;
+  isDraft?: boolean;
+  reviewStatus?: string;
+  status?: string;
+  camp: string | null;
+}
+
+interface PrInfo {
+  number: number;
+  title: string;
+  url: string;
+  headRefName: string;
+  updatedAt: string;
+  isDraft: boolean;
+  reviewDecision: string;
+}
 
 // ---------------------------------------------------------------------------
 // Error translation
 // ---------------------------------------------------------------------------
 
-function runGit(args, cwd) {
+function runGit(args: string[], cwd: string): string {
   const r = spawnSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
   if (r.status !== 0) throw new Error(r.stderr?.trim() || `git ${args[0]} failed`);
   return r.stdout || '';
 }
 
-function getChangedFiles(wtPath) {
+function getChangedFiles(wtPath: string): ChangedFile[] {
   const diff = (spawnSync('git', ['-C', wtPath, 'diff', '--name-status'], { encoding: 'utf8', stdio: 'pipe' }).stdout || '').trim();
   const untracked = (spawnSync('git', ['-C', wtPath, 'ls-files', '--others', '--exclude-standard'], { encoding: 'utf8', stdio: 'pipe' }).stdout || '').trim();
-  const files = [];
+  const files: ChangedFile[] = [];
   if (diff) {
     for (const line of diff.split('\n')) {
       const [status, ...pathParts] = line.split('\t');
@@ -48,7 +102,7 @@ function getChangedFiles(wtPath) {
   return files;
 }
 
-function copyCampFiles(projectRoot, wtPath, copyFiles, onLog) {
+function copyCampFiles(projectRoot: string, wtPath: string, copyFiles: string[] | undefined, onLog?: (msg: string) => void): void {
   if (!copyFiles?.length) return;
   for (const file of copyFiles) {
     try {
@@ -60,8 +114,8 @@ function copyCampFiles(projectRoot, wtPath, copyFiles, onLog) {
   }
 }
 
-function friendlyError(err, branch) {
-  const msg = err?.message || String(err);
+function friendlyError(err: unknown, branch: string): string {
+  const msg = (err as Error)?.message || String(err);
   if (/invalid reference/.test(msg)) return `"${branch}" 브랜치를 찾을 수 없습니다.`;
   if (/already exists/.test(msg)) return '이미 같은 이름의 캠프가 있습니다.';
   if (/already checked out/.test(msg)) return '이 브랜치가 다른 곳에서 사용 중입니다.';
@@ -72,20 +126,20 @@ function friendlyError(err, branch) {
   return msg;
 }
 
-function friendlyStartError(err) {
-  const msg = err?.message || String(err);
+function friendlyStartError(err: unknown): string {
+  const msg = (err as Error)?.message || String(err);
   if (/Timeout waiting for port|포트.*열리지/.test(msg)) return '서버가 시작하는 데 너무 오래 걸립니다.';
   if (/ECONNREFUSED/.test(msg)) return '서버 연결이 거부됐습니다.';
   return msg;
 }
 
-function updateCampStatus(name, status, extra) {
+function updateCampStatus(name: string, status: Camp['status'], extra?: Partial<Camp>): void {
   const camp = getOne(name);
   if (!camp) return; // camp may have been deleted during async setup
   upsert({ ...camp, status, ...extra });
 }
 
-function setupCampDeps(name, wtPath, cfg, broadcast) {
+function setupCampDeps(name: string, wtPath: string, cfg: SanjangConfig, broadcast: (msg: BroadcastMessage) => void): void {
   if (!cfg.setup) {
     updateCampStatus(name, 'stopped');
     broadcast({ type: 'playground-status', name, data: { status: 'stopped' } });
@@ -106,13 +160,13 @@ function setupCampDeps(name, wtPath, cfg, broadcast) {
   const setupProc = spawn(cfg.setup, [], {
     cwd: wtPath, shell: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  setupProc.stdout.on('data', (d) => {
+  setupProc.stdout!.on('data', (d: Buffer) => {
     broadcast({ type: 'log', name, source: 'setup', data: d.toString() });
   });
-  setupProc.stderr.on('data', (d) => {
+  setupProc.stderr!.on('data', (d: Buffer) => {
     broadcast({ type: 'log', name, source: 'setup', data: d.toString() });
   });
-  setupProc.on('close', (code) => {
+  setupProc.on('close', (code: number | null) => {
     if (code === 0) {
       broadcast({ type: 'log', name, source: 'sanjang', data: '설치 완료 ✓' });
       updateCampStatus(name, 'stopped');
@@ -131,7 +185,7 @@ const MAX_CAMPS = 7;
 // Initialize
 // ---------------------------------------------------------------------------
 
-export async function createApp(projectRoot, options = {}) {
+export async function createApp(projectRoot: string, options: CreateAppOptions = {}): Promise<CreateAppResult> {
   const port = options.port ?? 4000;
 
   // Initialize modules
@@ -163,34 +217,34 @@ export async function createApp(projectRoot, options = {}) {
   const server = createServer(app);
   const wss = new WebSocketServer({ server });
 
-  function broadcast(msg) {
+  function broadcast(msg: BroadcastMessage): void {
     const text = JSON.stringify(msg);
     for (const client of wss.clients) {
-      if (client.readyState === 1) client.send(text);
+      if (client.readyState === WebSocket.OPEN) client.send(text);
     }
   }
 
-  wss.on('connection', (ws) => {
-    ws.on('error', (err) => console.error('[ws] client error:', err.message));
+  wss.on('connection', (ws: WebSocket) => {
+    ws.on('error', (err: Error) => console.error('[ws] client error:', err.message));
   });
 
   // -------------------------------------------------------------------------
   // REST API
   // -------------------------------------------------------------------------
 
-  app.get('/api/ports', (_req, res) => res.json(scanPorts()));
+  app.get('/api/ports', (_req: Request, res: Response) => res.json(scanPorts()));
 
-  app.get('/api/branches', async (_req, res) => {
+  app.get('/api/branches', async (_req: Request, res: Response) => {
     try {
       res.json(await listBranches());
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.get('/api/playgrounds', (_req, res) => res.json(getAll()));
+  app.get('/api/playgrounds', (_req: Request, res: Response) => res.json(getAll()));
 
-  app.post('/api/playgrounds', async (req, res) => {
+  app.post('/api/playgrounds', async (req: Request, res: Response) => {
     const { name, branch } = req.body ?? {};
     if (!name) return res.status(400).json({ error: 'name is required' });
     if (!branch) return res.status(400).json({ error: 'branch is required' });
@@ -215,11 +269,11 @@ export async function createApp(projectRoot, options = {}) {
       const wtPath = campPath(name);
 
       // Copy gitignored files first (sync, fast)
-      copyCampFiles(projectRoot, wtPath, freshConfig.copyFiles, (msg) => {
+      copyCampFiles(projectRoot, wtPath, freshConfig.copyFiles, (msg: string) => {
         broadcast({ type: 'log', name, source: 'sanjang', data: msg });
       });
 
-      const record = { name, branch, slot, fePort: actualFePort, bePort, status: 'setting-up' };
+      const record: Camp = { name, branch, slot, fePort: actualFePort, bePort, status: 'setting-up' };
       upsert(record);
       broadcast({ type: 'playground-created', name, data: record });
       res.status(201).json(record);
@@ -233,9 +287,9 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // Track in-flight start operations
-  const startingSet = new Set();
+  const startingSet = new Set<string>();
 
-  app.post('/api/playgrounds/:name/start', async (req, res) => {
+  app.post('/api/playgrounds/:name/start', async (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -251,7 +305,7 @@ export async function createApp(projectRoot, options = {}) {
         await startCamp(pg, (event) => {
           broadcast({ type: event.type, name, data: event.data, source: event.source });
         });
-        upsert({ ...getOne(name), status: 'running' });
+        upsert({ ...getOne(name)!, status: 'running' });
         broadcast({ type: 'playground-status', name, data: { status: 'running' } });
       } catch (err) {
         const current = getOne(name) ?? pg;
@@ -267,7 +321,7 @@ export async function createApp(projectRoot, options = {}) {
     })();
   });
 
-  app.post('/api/playgrounds/:name/stop', (req, res) => {
+  app.post('/api/playgrounds/:name/stop', (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -278,7 +332,7 @@ export async function createApp(projectRoot, options = {}) {
     res.json({ status: 'stopped' });
   });
 
-  app.delete('/api/playgrounds/:name', async (req, res) => {
+  app.delete('/api/playgrounds/:name', async (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -292,11 +346,11 @@ export async function createApp(projectRoot, options = {}) {
     } catch (err) {
       remove(name);
       broadcast({ type: 'playground-deleted', name, data: null });
-      res.json({ deleted: true, warning: err.message });
+      res.json({ deleted: true, warning: (err as Error).message });
     }
   });
 
-  app.post('/api/playgrounds/:name/snapshot', async (req, res) => {
+  app.post('/api/playgrounds/:name/snapshot', async (req: Request, res: Response) => {
     const { name } = req.params;
     const { label } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -304,11 +358,11 @@ export async function createApp(projectRoot, options = {}) {
       await saveSnapshot(name, label ?? new Date().toISOString());
       res.json({ saved: true });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.post('/api/playgrounds/:name/restore', async (req, res) => {
+  app.post('/api/playgrounds/:name/restore', async (req: Request, res: Response) => {
     const { name } = req.params;
     const { index } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -318,21 +372,21 @@ export async function createApp(projectRoot, options = {}) {
       await restoreSnapshot(name, idx);
       res.json({ restored: true });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.get('/api/playgrounds/:name/snapshots', async (req, res) => {
+  app.get('/api/playgrounds/:name/snapshots', async (req: Request, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     try {
       res.json(await listSnapshots(name));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.post('/api/playgrounds/:name/reset', async (req, res) => {
+  app.post('/api/playgrounds/:name/reset', async (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -361,11 +415,11 @@ export async function createApp(projectRoot, options = {}) {
       broadcast({ type: 'playground-reset', name, data: { branch: pg.branch } });
       res.json({ reset: true });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.get('/api/playgrounds/:name/diagnostics', async (req, res) => {
+  app.get('/api/playgrounds/:name/diagnostics', async (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -373,7 +427,7 @@ export async function createApp(projectRoot, options = {}) {
     try {
       res.json(await buildDiagnostics(pg, processInfo));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
@@ -381,15 +435,15 @@ export async function createApp(projectRoot, options = {}) {
   // Cache management
   // -------------------------------------------------------------------------
 
-  app.get('/api/cache/status', (_req, res) => {
+  app.get('/api/cache/status', (_req: Request, res: Response) => {
     const setupCwd = config.dev?.cwd || '.';
     res.json(isCacheValid(projectRoot, setupCwd));
   });
 
-  app.post('/api/cache/rebuild', async (_req, res) => {
+  app.post('/api/cache/rebuild', async (_req: Request, res: Response) => {
     try {
       broadcast({ type: 'cache-rebuild', data: { status: 'building' } });
-      const result = await buildCache(projectRoot, config, (msg) => {
+      const result = await buildCache(projectRoot, config, (msg: string) => {
         broadcast({ type: 'log', name: '_cache', source: 'sanjang', data: msg });
       });
       if (result.success) {
@@ -400,7 +454,7 @@ export async function createApp(projectRoot, options = {}) {
         res.status(500).json({ error: result.error });
       }
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
@@ -408,21 +462,21 @@ export async function createApp(projectRoot, options = {}) {
   // Action log + Ship + Revert + Sync
   // -------------------------------------------------------------------------
 
-  function actionsFile(name) {
+  function actionsFile(name: string): string {
     return join(campPath(name), 'actions.json');
   }
 
-  function readActions(name) {
-    try { return JSON.parse(readFileSync(actionsFile(name), 'utf8')); }
+  function readActions(name: string): ActionEntry[] {
+    try { return JSON.parse(readFileSync(actionsFile(name), 'utf8')) as ActionEntry[]; }
     catch { return []; }
   }
 
-  function writeActions(name, actions) {
+  function writeActions(name: string, actions: ActionEntry[]): void {
     try { writeFileSync(actionsFile(name), JSON.stringify(actions, null, 2)); }
     catch { /* worktree may not exist yet */ }
   }
 
-  app.post('/api/playgrounds/:name/log-action', (req, res) => {
+  app.post('/api/playgrounds/:name/log-action', (req: Request, res: Response) => {
     const { name } = req.params;
     const { description, files } = req.body ?? {};
     if (!description) return res.status(400).json({ error: 'description required' });
@@ -433,7 +487,7 @@ export async function createApp(projectRoot, options = {}) {
     res.json({ logged: true });
   });
 
-  app.post('/api/playgrounds/:name/remove-action', (req, res) => {
+  app.post('/api/playgrounds/:name/remove-action', (req: Request, res: Response) => {
     const { name } = req.params;
     const { index } = req.body ?? {};
     const actions = readActions(name);
@@ -444,7 +498,7 @@ export async function createApp(projectRoot, options = {}) {
     res.json({ removed: true });
   });
 
-  app.get('/api/playgrounds/:name/changes', (req, res) => {
+  app.get('/api/playgrounds/:name/changes', (req: Request, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     try {
@@ -452,11 +506,11 @@ export async function createApp(projectRoot, options = {}) {
       const files = getChangedFiles(wtPath);
       res.json({ count: files.length, files, actions: readActions(name) });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.post('/api/playgrounds/:name/ship', async (req, res) => {
+  app.post('/api/playgrounds/:name/ship', async (req: Request, res: Response) => {
     const { name } = req.params;
     const { message } = req.body ?? {};
     const pg = getOne(name);
@@ -503,7 +557,7 @@ export async function createApp(projectRoot, options = {}) {
 
           // Try Claude for rich PR body, fallback to simple
           const claudeCheck = spawnSync('which', ['claude'], { stdio: 'pipe' });
-          let prBody;
+          let prBody: string;
 
           if (claudeCheck.status === 0) {
             const prompt = buildClaudePrPrompt({ message, diffStat, diff });
@@ -536,11 +590,11 @@ export async function createApp(projectRoot, options = {}) {
         }
       });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  app.post('/api/playgrounds/:name/revert-files', (req, res) => {
+  app.post('/api/playgrounds/:name/revert-files', (req: Request, res: Response) => {
     const { name } = req.params;
     const { files } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -565,14 +619,14 @@ export async function createApp(projectRoot, options = {}) {
       }
       res.json({ reverted: files.length });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
   // Shared task runner state (used by task endpoint and conflict resolver)
-  const runningTasks = new Map();
+  const runningTasks = new Map<string, ChildProcess>();
 
-  app.post('/api/playgrounds/:name/sync', (req, res) => {
+  app.post('/api/playgrounds/:name/sync', (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -593,7 +647,7 @@ export async function createApp(projectRoot, options = {}) {
         res.json({ synced: true, message: '최신 버전이 반영되었습니다.' });
       }
     } catch (err) {
-      const msg = err.message || '';
+      const msg = (err as Error).message || '';
       if (msg.includes('CONFLICT')) {
         const statusOut = spawnSync('git', ['-C', campPath(name), 'status', '--porcelain'], {
           encoding: 'utf8', stdio: 'pipe',
@@ -601,14 +655,14 @@ export async function createApp(projectRoot, options = {}) {
         const conflictFiles = parseConflictFiles(statusOut);
         res.json({ synced: false, conflict: true, conflictFiles, message: '충돌이 있습니다. 어떻게 할까요?' });
       } else {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: (err as Error).message });
       }
     }
   });
 
   // POST /api/playgrounds/:name/resolve-conflict
   // body: { strategy: 'claude' | 'ours' | 'theirs' }
-  app.post('/api/playgrounds/:name/resolve-conflict', async (req, res) => {
+  app.post('/api/playgrounds/:name/resolve-conflict', async (req: Request, res: Response) => {
     const { name } = req.params;
     const { strategy } = req.body ?? {};
     const pg = getOne(name);
@@ -650,13 +704,13 @@ export async function createApp(projectRoot, options = {}) {
       runningTasks.set(name, child);
       broadcast({ type: 'task-started', name, data: { prompt: '충돌 해결 중...' } });
 
-      child.stdout.on('data', (chunk) => {
+      child.stdout!.on('data', (chunk: Buffer) => {
         broadcast({ type: 'task-output', name, data: { text: chunk.toString() } });
       });
-      child.stderr.on('data', (chunk) => {
+      child.stderr!.on('data', (chunk: Buffer) => {
         broadcast({ type: 'task-output', name, data: { text: chunk.toString() } });
       });
-      child.on('close', (code) => {
+      child.on('close', (_code: number | null) => {
         runningTasks.delete(name);
         // Commit after Claude resolves conflicts
         spawnSync('git', ['-C', wtPath, 'add', '.'], { stdio: 'pipe' });
@@ -668,7 +722,7 @@ export async function createApp(projectRoot, options = {}) {
           broadcast({ type: 'conflict-failed', name, data: { message: 'Claude가 충돌을 완전히 해결하지 못했습니다.' } });
         }
       });
-      child.on('error', (err) => {
+      child.on('error', (err: NodeJS.ErrnoException) => {
         runningTasks.delete(name);
         const msg = err.code === 'ENOENT'
           ? 'Claude CLI가 설치되어 있지 않습니다.'
@@ -683,7 +737,7 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // POST /api/playgrounds/:name/resolve-abort — cancel conflict state
-  app.post('/api/playgrounds/:name/resolve-abort', (req, res) => {
+  app.post('/api/playgrounds/:name/resolve-abort', (req: Request, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     const wtPath = campPath(name);
@@ -695,7 +749,7 @@ export async function createApp(projectRoot, options = {}) {
   // Task runner (claude -p spawn)
   // -------------------------------------------------------------------------
 
-  app.post('/api/playgrounds/:name/task', (req, res) => {
+  app.post('/api/playgrounds/:name/task', (req: Request, res: Response) => {
     const { name } = req.params;
     const { prompt } = req.body ?? {};
     const pg = getOne(name);
@@ -713,20 +767,20 @@ export async function createApp(projectRoot, options = {}) {
     runningTasks.set(name, child);
     broadcast({ type: 'task-started', name, data: { prompt: prompt.trim() } });
 
-    child.stdout.on('data', (chunk) => {
+    child.stdout!.on('data', (chunk: Buffer) => {
       broadcast({ type: 'task-output', name, data: { text: chunk.toString() } });
     });
-    child.stderr.on('data', (chunk) => {
+    child.stderr!.on('data', (chunk: Buffer) => {
       broadcast({ type: 'task-output', name, data: { text: chunk.toString() } });
     });
-    child.on('close', (code) => {
+    child.on('close', (code: number | null) => {
       runningTasks.delete(name);
       const actions = readActions(name);
       actions.push({ description: prompt.trim(), files: [], ts: Date.now() });
       writeActions(name, actions);
       broadcast({ type: 'task-done', name, data: { code, prompt: prompt.trim() } });
     });
-    child.on('error', (err) => {
+    child.on('error', (err: NodeJS.ErrnoException) => {
       runningTasks.delete(name);
       const msg = err.code === 'ENOENT'
         ? 'Claude CLI가 설치되어 있지 않습니다. npm i -g @anthropic-ai/claude-code 로 설치하세요.'
@@ -737,7 +791,7 @@ export async function createApp(projectRoot, options = {}) {
     res.json({ started: true });
   });
 
-  app.post('/api/playgrounds/:name/task/cancel', (req, res) => {
+  app.post('/api/playgrounds/:name/task/cancel', (req: Request, res: Response) => {
     const { name } = req.params;
     const child = runningTasks.get(name);
     if (!child) return res.status(404).json({ error: '진행 중인 작업이 없습니다.' });
@@ -747,12 +801,12 @@ export async function createApp(projectRoot, options = {}) {
     res.json({ cancelled: true });
   });
 
-  app.get('/api/playgrounds/:name/task/status', (req, res) => {
+  app.get('/api/playgrounds/:name/task/status', (req: Request, res: Response) => {
     res.json({ running: runningTasks.has(req.params.name) });
   });
 
   // POST /api/playgrounds/:name/enter — 캠프 진입 (전체 정보 + Warp 탭 열기)
-  app.post('/api/playgrounds/:name/enter', async (req, res) => {
+  app.post('/api/playgrounds/:name/enter', async (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -765,7 +819,7 @@ export async function createApp(projectRoot, options = {}) {
       : { opened: false, terminal: null, path: wtPath };
 
     // 변경사항 조회
-    let changes = { count: 0, files: [], actions: [] };
+    let changes: { count: number; files: ChangedFile[]; actions: ActionEntry[] } = { count: 0, files: [], actions: [] };
     try {
       const files = getChangedFiles(wtPath);
       changes = { count: files.length, files, actions: readActions(name) };
@@ -780,7 +834,7 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // POST /api/playgrounds/:name/open-terminal — 터미널만 열기
-  app.post('/api/playgrounds/:name/open-terminal', (req, res) => {
+  app.post('/api/playgrounds/:name/open-terminal', (req: Request, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -791,31 +845,31 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // GET /api/my-work — 내 진행 중인 작업 (open PRs + 로컬 캠프)
-  app.get('/api/my-work', async (_req, res) => {
+  app.get('/api/my-work', async (_req: Request, res: Response) => {
     const camps = getAll();
 
     // Open PRs by me (gh CLI) — async to avoid blocking event loop
-    let prs = [];
+    let prs: PrInfo[] = [];
     const ghCheck = spawnSync('which', ['gh'], { stdio: 'pipe' });
     if (ghCheck.status === 0) {
       try {
-        const stdout = await new Promise((resolve, reject) => {
+        const stdout = await new Promise<string>((resolve, reject) => {
           let out = '';
           const proc = spawn('gh', ['pr', 'list', '--author', '@me', '--state', 'open', '--limit', '50', '--json', 'number,title,url,headRefName,updatedAt,isDraft,reviewDecision'], {
             stdio: ['ignore', 'pipe', 'pipe'],
           });
-          proc.stdout.on('data', (d) => { out += d; });
-          proc.on('close', (code) => code === 0 ? resolve(out) : reject(new Error(`gh exit ${code}`)));
+          proc.stdout!.on('data', (d: Buffer) => { out += d; });
+          proc.on('close', (code: number | null) => code === 0 ? resolve(out) : reject(new Error(`gh exit ${code}`)));
           proc.on('error', reject);
           setTimeout(() => { proc.kill(); reject(new Error('timeout')); }, 10_000);
         });
-        try { prs = JSON.parse(stdout); } catch { /* ignore */ }
+        try { prs = JSON.parse(stdout) as PrInfo[]; } catch { /* ignore */ }
       } catch { /* gh not available or timed out */ }
     }
 
     // Match camps to PRs
-    const work = [];
-    const campsByBranch = new Map(camps.map(c => [c.branch, c]));
+    const work: WorkItem[] = [];
+    const campsByBranch = new Map<string, Camp>(camps.map(c => [c.branch, c]));
 
     // 1. PRs (리뷰중)
     for (const pr of prs) {
@@ -834,7 +888,7 @@ export async function createApp(projectRoot, options = {}) {
     }
 
     // 2. Local camps without PR (작업중)
-    const prBranches = new Set(prs.map(p => p.headRefName));
+    const prBranches = new Set<string>(prs.map(p => p.headRefName));
     for (const camp of camps) {
       if (!prBranches.has(camp.branch)) {
         work.push({
@@ -851,7 +905,7 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // POST /api/quick-start — 자연어 → 브랜치 생성 → 캠프 생성
-  app.post('/api/quick-start', async (req, res) => {
+  app.post('/api/quick-start', async (req: Request, res: Response) => {
     const { description } = req.body ?? {};
     if (!description?.trim()) return res.status(400).json({ error: '뭘 하고 싶은지 입력해주세요.' });
 
@@ -886,11 +940,11 @@ export async function createApp(projectRoot, options = {}) {
 
       const wtPath = campPath(name);
 
-      copyCampFiles(projectRoot, wtPath, freshConfig2.copyFiles, (msg) => {
+      copyCampFiles(projectRoot, wtPath, freshConfig2.copyFiles, (msg: string) => {
         broadcast({ type: 'log', name, source: 'sanjang', data: msg });
       });
 
-      const record = { name, branch, slot, fePort: actualFePort2, bePort, status: 'setting-up', description: description.trim() };
+      const record: Camp = { name, branch, slot, fePort: actualFePort2, bePort, status: 'setting-up', description: description.trim() };
       upsert(record);
       broadcast({ type: 'playground-created', name, data: record });
       res.status(201).json(record);
@@ -904,14 +958,14 @@ export async function createApp(projectRoot, options = {}) {
   });
 
   // SPA fallback
-  app.get('*', (_req, res) => {
+  app.get('*', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, '..', 'dashboard', 'index.html'));
   });
 
   return { app, server, port, runningTasks, warpStatus };
 }
 
-export async function startServer(projectRoot, options = {}) {
+export async function startServer(projectRoot: string, options: CreateAppOptions = {}): Promise<Server> {
   const { server, port, runningTasks, warpStatus } = await createApp(projectRoot, options);
   server.listen(port, '127.0.0.1', () => {
     console.log(`⛰ 산장 서버 실행 중 — http://localhost:${port}`);
@@ -923,7 +977,7 @@ export async function startServer(projectRoot, options = {}) {
   });
 
   // Graceful shutdown
-  function shutdown() {
+  function shutdown(): void {
     console.log('\n⛰ 산장 종료 중...');
     for (const [, child] of runningTasks) {
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
