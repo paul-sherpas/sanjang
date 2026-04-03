@@ -23,6 +23,10 @@ import { isCacheValid, applyCacheToWorktree, buildCache } from './engine/cache.t
 
 import type { Camp, SanjangConfig, BroadcastMessage } from './types.ts';
 
+// Typed request helpers for Express strict mode
+type NameParams = { name: string };
+type NameReq = Request<NameParams>;
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
@@ -93,7 +97,7 @@ function getChangedFiles(wtPath: string): ChangedFile[] {
   if (diff) {
     for (const line of diff.split('\n')) {
       const [status, ...pathParts] = line.split('\t');
-      files.push({ path: pathParts.join('\t'), status: status === 'M' ? '수정' : status === 'D' ? '삭제' : status === 'A' ? '추가' : status });
+      files.push({ path: pathParts.join('\t'), status: status === 'M' ? '수정' : status === 'D' ? '삭제' : status === 'A' ? '추가' : status! });
     }
   }
   if (untracked) {
@@ -289,7 +293,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Track in-flight start operations
   const startingSet = new Set<string>();
 
-  app.post('/api/playgrounds/:name/start', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/start', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -321,7 +325,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     })();
   });
 
-  app.post('/api/playgrounds/:name/stop', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/stop', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -332,7 +336,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ status: 'stopped' });
   });
 
-  app.delete('/api/playgrounds/:name', async (req: Request, res: Response) => {
+  app.delete('/api/playgrounds/:name', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -350,7 +354,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.post('/api/playgrounds/:name/snapshot', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/snapshot', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { label } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -362,7 +366,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.post('/api/playgrounds/:name/restore', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/restore', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { index } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -376,7 +380,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.get('/api/playgrounds/:name/snapshots', async (req: Request, res: Response) => {
+  app.get('/api/playgrounds/:name/snapshots', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     try {
@@ -386,7 +390,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.post('/api/playgrounds/:name/reset', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/reset', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -419,7 +423,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.get('/api/playgrounds/:name/diagnostics', async (req: Request, res: Response) => {
+  app.get('/api/playgrounds/:name/diagnostics', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -476,7 +480,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     catch { /* worktree may not exist yet */ }
   }
 
-  app.post('/api/playgrounds/:name/log-action', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/log-action', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { description, files } = req.body ?? {};
     if (!description) return res.status(400).json({ error: 'description required' });
@@ -487,7 +491,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ logged: true });
   });
 
-  app.post('/api/playgrounds/:name/remove-action', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/remove-action', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { index } = req.body ?? {};
     const actions = readActions(name);
@@ -498,7 +502,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ removed: true });
   });
 
-  app.get('/api/playgrounds/:name/changes', (req: Request, res: Response) => {
+  app.get('/api/playgrounds/:name/changes', (req: NameReq, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     try {
@@ -510,7 +514,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.post('/api/playgrounds/:name/ship', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/ship', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { message } = req.body ?? {};
     const pg = getOne(name);
@@ -594,7 +598,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  app.post('/api/playgrounds/:name/revert-files', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/revert-files', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { files } = req.body ?? {};
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
@@ -626,7 +630,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Shared task runner state (used by task endpoint and conflict resolver)
   const runningTasks = new Map<string, ChildProcess>();
 
-  app.post('/api/playgrounds/:name/sync', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/sync', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -662,7 +666,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
   // POST /api/playgrounds/:name/resolve-conflict
   // body: { strategy: 'claude' | 'ours' | 'theirs' }
-  app.post('/api/playgrounds/:name/resolve-conflict', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/resolve-conflict', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { strategy } = req.body ?? {};
     const pg = getOne(name);
@@ -737,7 +741,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   });
 
   // POST /api/playgrounds/:name/resolve-abort — cancel conflict state
-  app.post('/api/playgrounds/:name/resolve-abort', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/resolve-abort', (req: NameReq, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: 'not found' });
     const wtPath = campPath(name);
@@ -749,7 +753,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Task runner (claude -p spawn)
   // -------------------------------------------------------------------------
 
-  app.post('/api/playgrounds/:name/task', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/task', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { prompt } = req.body ?? {};
     const pg = getOne(name);
@@ -791,7 +795,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ started: true });
   });
 
-  app.post('/api/playgrounds/:name/task/cancel', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/task/cancel', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const child = runningTasks.get(name);
     if (!child) return res.status(404).json({ error: '진행 중인 작업이 없습니다.' });
@@ -801,12 +805,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ cancelled: true });
   });
 
-  app.get('/api/playgrounds/:name/task/status', (req: Request, res: Response) => {
+  app.get('/api/playgrounds/:name/task/status', (req: NameReq, res: Response) => {
     res.json({ running: runningTasks.has(req.params.name) });
   });
 
   // POST /api/playgrounds/:name/enter — 캠프 진입 (전체 정보 + Warp 탭 열기)
-  app.post('/api/playgrounds/:name/enter', async (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/enter', async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
@@ -834,7 +838,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   });
 
   // POST /api/playgrounds/:name/open-terminal — 터미널만 열기
-  app.post('/api/playgrounds/:name/open-terminal', (req: Request, res: Response) => {
+  app.post('/api/playgrounds/:name/open-terminal', (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: 'not found' });
