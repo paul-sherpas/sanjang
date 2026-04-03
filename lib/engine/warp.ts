@@ -37,7 +37,7 @@ export function openWarpTab(worktreePath: string): WarpOpenResult {
   }
 
   const cmd = buildOpenCommand(worktreePath);
-  const result = spawnSync(cmd[0], cmd.slice(1), { stdio: 'pipe' });
+  const result = spawnSync(cmd[0]!, cmd.slice(1), { stdio: 'pipe' });
 
   return {
     opened: result.status === 0,

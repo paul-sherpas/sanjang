@@ -1,4 +1,4 @@
-import simpleGit from 'simple-git';
+import { simpleGit } from 'simple-git';
 import { campPath } from './worktree.ts';
 
 const STASH_PREFIX = 'sanjang-snapshot:';
@@ -31,14 +31,14 @@ export async function listSnapshots(name: string): Promise<StashEntry[]> {
     return result
       .trim()
       .split('\n')
-      .map(line => {
+      .map((line: string) => {
         const [ref, message, date] = line.split('|');
         const match = ref?.match(/stash@\{(\d+)\}/);
-        const index = match ? parseInt(match[1], 10) : 0;
+        const index = match ? parseInt(match[1]!, 10) : 0;
         const isSanjangSnapshot = message ? message.includes(STASH_PREFIX) : false;
         return { index, message: message || '', isSanjangSnapshot, date: date || '' };
       })
-      .filter(entry => entry.isSanjangSnapshot);
+      .filter((entry: StashEntry) => entry.isSanjangSnapshot);
   } catch {
     return [];
   }

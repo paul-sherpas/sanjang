@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import simpleGit, { type SimpleGit } from 'simple-git';
+import { simpleGit, type SimpleGit } from 'simple-git';
 import { getCampsDir } from './state.ts';
 
 let projectRoot: string | null = null;
@@ -45,15 +45,16 @@ export async function listBranches(): Promise<BranchInfo[]> {
   for (const line of raw.trim().split('\n')) {
     if (!line) continue;
     const [shortName, date, fullRef] = line.split('\t');
+    if (!shortName || !fullRef) continue;
     if (shortName.includes('HEAD')) continue;
     const isRemote = fullRef.startsWith('refs/remotes/origin/');
     const clean = shortName.replace(/^origin\//, '').trim();
     if (!clean) continue;
 
-    const entry: BranchInfo = map.get(clean) || { name: clean, remote: false, local: false, date };
+    const entry: BranchInfo = map.get(clean) || { name: clean, remote: false, local: false, date: date ?? '' };
     if (isRemote) entry.remote = true;
     else entry.local = true;
-    if (!entry.date) entry.date = date;
+    if (!entry.date) entry.date = date ?? '';
     map.set(clean, entry);
   }
 

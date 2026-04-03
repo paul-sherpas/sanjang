@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { findLockfile, hashLockfile, isCacheValid, buildCache, applyCacheToWorktree, getCacheDir } from '../lib/engine/cache.ts';
+import type { SanjangConfig } from '../lib/types.ts';
+
+type CacheConfig = Pick<SanjangConfig, 'dev' | 'setup'>;
 
 describe('cache — findLockfile', () => {
   let dir: string;
@@ -133,7 +136,7 @@ describe('cache — buildCache', () => {
     writeFileSync(join(projectRoot, 'node_modules', 'foo', 'index.js'), 'ok');
     writeFileSync(join(projectRoot, 'package-lock.json'), '{"lock":true}');
 
-    const config = { dev: { cwd: '.' }, setup: 'npm install' };
+    const config = { dev: { cwd: '.' }, setup: 'npm install' } as CacheConfig;
     const logs: string[] = [];
     const result = await buildCache(projectRoot, config, (msg: string) => logs.push(msg));
 
@@ -146,7 +149,7 @@ describe('cache — buildCache', () => {
 
   it('returns failure when no lockfile', async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-nolock-'));
-    const config = { dev: { cwd: '.' }, setup: 'npm install' };
+    const config = { dev: { cwd: '.' }, setup: 'npm install' } as CacheConfig;
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
     assert.ok(result.error?.includes('lockfile'));
@@ -156,7 +159,7 @@ describe('cache — buildCache', () => {
   it('returns failure when no node_modules and no setup command', async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-nosetup-'));
     writeFileSync(join(projectRoot, 'package-lock.json'), '{}');
-    const config = { dev: { cwd: '.' }, setup: null };
+    const config = { dev: { cwd: '.' }, setup: null } as CacheConfig;
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
     assert.ok(result.error?.includes('no setup command'));
@@ -166,7 +169,7 @@ describe('cache — buildCache', () => {
   it('returns failure when setup command fails', async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-failsetup-'));
     writeFileSync(join(projectRoot, 'package-lock.json'), '{}');
-    const config = { dev: { cwd: '.' }, setup: 'exit 1' };
+    const config = { dev: { cwd: '.' }, setup: 'exit 1' } as CacheConfig;
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
     assert.ok(result.error?.includes('setup failed'));
@@ -179,7 +182,7 @@ describe('cache — buildCache', () => {
     writeFileSync(join(projectRoot, 'frontend', 'node_modules', 'pkg', 'index.js'), 'ok');
     writeFileSync(join(projectRoot, 'frontend', 'package-lock.json'), '{"sub":true}');
 
-    const config = { dev: { cwd: 'frontend' }, setup: 'npm install' };
+    const config = { dev: { cwd: 'frontend' }, setup: 'npm install' } as CacheConfig;
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, true);
     assert.ok(existsSync(join(getCacheDir(projectRoot), 'frontend', 'node_modules', 'pkg', 'index.js')));

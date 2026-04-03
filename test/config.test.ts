@@ -213,9 +213,9 @@ describe('config — detectApps', () => {
     const names = apps.map(a => a.dir).sort();
     assert.deepEqual(names, ['backend', 'frontend', 'new-frontend']);
     const fe = apps.find(a => a.dir === 'frontend');
-    assert.equal(fe.framework, 'shadow-cljs');
+    assert.equal(fe!.framework, 'shadow-cljs');
     const newFe = apps.find(a => a.dir === 'new-frontend');
-    assert.equal(newFe.framework, 'Turborepo');
+    assert.equal(newFe!.framework, 'Turborepo');
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -226,8 +226,8 @@ describe('config — detectApps', () => {
     writeFileSync(join(dir, 'app', 'package.json'), '{}');
     const apps = detectApps(dir);
     assert.equal(apps.length, 1);
-    assert.equal(apps[0].dir, 'app');
-    assert.equal(apps[0].framework, 'Next.js');
+    assert.equal(apps[0]!.dir, 'app');
+    assert.equal(apps[0]!.framework, 'Next.js');
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -243,7 +243,7 @@ describe('config — detectApps', () => {
 
     const apps = detectApps(dir);
     assert.equal(apps.length, 1);
-    assert.equal(apps[0].dir, 'app');
+    assert.equal(apps[0]!.dir, 'app');
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -257,7 +257,7 @@ describe('config — detectApps', () => {
 
     const apps = detectApps(dir);
     assert.equal(apps.length, 1);
-    assert.equal(apps[0].dir, 'app');
+    assert.equal(apps[0]!.dir, 'app');
     rmSync(dir, { recursive: true, force: true });
   });
 });

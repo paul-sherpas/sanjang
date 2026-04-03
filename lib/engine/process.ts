@@ -103,7 +103,7 @@ async function ensureBackend(onEvent: EventCallback): Promise<void> {
 
   onEvent({ type: 'log', source: 'sanjang', data: `Backend(:${be.port}) 시작 중...` });
 
-  const [cmd, ...args] = be.command.split(' ');
+  const [cmd = 'echo', ...args] = be.command.split(' ');
   const cwd = be.cwd ? join(getProjectRoot(), be.cwd) : getProjectRoot();
 
   const beProc = spawn(cmd, args, {

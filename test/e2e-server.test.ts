@@ -21,11 +21,12 @@ interface ApiResponse<T = Record<string, unknown>> {
   data: T;
 }
 
-function api<T = Record<string, unknown>>(path: string, opts: RequestInit & { body?: unknown } = {}): Promise<ApiResponse<T>> {
+function api<T = Record<string, unknown>>(path: string, opts: Omit<RequestInit, 'body'> & { body?: unknown } = {}): Promise<ApiResponse<T>> {
+  const { body, ...rest } = opts;
   return fetch(`${baseUrl}${path}`, {
     headers: { 'Content-Type': 'application/json' },
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    ...rest,
+    body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => {
     const data = await r.json().catch(() => ({})) as T;
     return { status: r.status, data };
