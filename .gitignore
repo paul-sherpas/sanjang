@@ -1,6 +1,8 @@
 node_modules/
 .sanjang/
 .camps/
+.gstack/
+.env
 state.json
 *.log
 .DS_Store
