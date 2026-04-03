@@ -28,4 +28,34 @@ describe('portal', () => {
     const result = slugify('fix: 버그 #42 수정!');
     assert.ok(/^[a-z0-9-]+$/.test(result));
   });
+
+  it('slugify returns "camp" for empty string', () => {
+    assert.equal(slugify(''), 'camp');
+  });
+
+  it('slugify returns "camp" for purely unmapped Korean', () => {
+    assert.equal(slugify('가나다라마바사'), 'camp');
+  });
+
+  it('slugify returns "camp" for whitespace-only input', () => {
+    assert.equal(slugify('   '), 'camp');
+  });
+
+  it('slugify handles single character input', () => {
+    const result = slugify('a');
+    assert.equal(result, 'a');
+  });
+
+  it('slugify handles numbers only', () => {
+    const result = slugify('12345');
+    assert.equal(result, '12345');
+  });
+
+  it('slugify truncates exactly at word boundary', () => {
+    // 50+ chars slug
+    const input = 'add user login page with search filter sort notification permission device';
+    const result = slugify(input);
+    assert.ok(result.length <= 50);
+    assert.ok(!result.endsWith('-'));
+  });
 });

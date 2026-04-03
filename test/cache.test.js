@@ -157,4 +157,38 @@ describe('cache — buildCache', () => {
     assert.ok(result.error.includes('lockfile'));
     rmSync(projectRoot, { recursive: true, force: true });
   });
+
+  it('returns failure when no node_modules and no setup command', async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-nosetup-'));
+    writeFileSync(join(projectRoot, 'package-lock.json'), '{}');
+    const config = { dev: { cwd: '.' }, setup: null };
+    const result = await buildCache(projectRoot, config);
+    assert.equal(result.success, false);
+    assert.ok(result.error.includes('no setup command'));
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  it('returns failure when setup command fails', async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-failsetup-'));
+    writeFileSync(join(projectRoot, 'package-lock.json'), '{}');
+    const config = { dev: { cwd: '.' }, setup: 'exit 1' };
+    const result = await buildCache(projectRoot, config);
+    assert.equal(result.success, false);
+    assert.ok(result.error.includes('setup failed'));
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  it('handles subdirectory setupCwd correctly', async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-subcwd-'));
+    mkdirSync(join(projectRoot, 'frontend', 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(projectRoot, 'frontend', 'node_modules', 'pkg', 'index.js'), 'ok');
+    writeFileSync(join(projectRoot, 'frontend', 'package-lock.json'), '{"sub":true}');
+
+    const config = { dev: { cwd: 'frontend' }, setup: 'npm install' };
+    const result = await buildCache(projectRoot, config);
+    assert.equal(result.success, true);
+    assert.ok(existsSync(join(getCacheDir(projectRoot), 'frontend', 'node_modules', 'pkg', 'index.js')));
+
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
 });

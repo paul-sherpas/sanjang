@@ -261,3 +261,37 @@ describe('config — detectApps', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('config — generateConfig edge cases', () => {
+  it('generates config with nonexistent appDir (falls back to unknown)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-gen-'));
+    const result = generateConfig(dir, { appDir: 'nonexistent', force: true });
+    assert.equal(result.created, true);
+    assert.equal(result.framework, 'unknown');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('force overwrites existing config', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-gen-'));
+    writeFileSync(join(dir, 'sanjang.config.js'), 'old');
+    writeFileSync(join(dir, 'next.config.js'), '');
+    writeFileSync(join(dir, 'package.json'), '{}');
+    const result = generateConfig(dir, { force: true });
+    assert.equal(result.created, true);
+    assert.equal(result.framework, 'Next.js');
+    const content = readFileSync(join(dir, 'sanjang.config.js'), 'utf8');
+    assert.ok(content.includes('Next.js'));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('detects bun.lock (not just bun.lockb)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-bun-'));
+    writeFileSync(join(dir, 'bun.lock'), '{}');
+    writeFileSync(join(dir, 'package.json'), '{"scripts":{"dev":"bun run dev"}}');
+    const result = generateConfig(dir);
+    assert.equal(result.created, true);
+    const content = readFileSync(join(dir, 'sanjang.config.js'), 'utf8');
+    assert.ok(content.includes('bun install'));
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
