@@ -20,11 +20,22 @@
     "type": "git",
     "url": "https://github.com/paul-sherpas/sanjang.git"
   },
-  "keywords": ["dev-tools", "worktree", "vibe-coding", "local-dev"],
+  "keywords": [
+    "dev-tools",
+    "worktree",
+    "vibe-coding",
+    "local-dev"
+  ],
   "files": [
     "bin/",
     "lib/",
     "dashboard/",
     "templates/"
-  ]
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.2"
+  }
 }
