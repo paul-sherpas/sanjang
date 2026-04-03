@@ -184,7 +184,7 @@ describe('config — generateConfig', () => {
 
     const content = readFileSync(join(dir, 'sanjang.config.js'), 'utf8');
     assert.ok(content.includes("cwd: 'frontend'"));
-    assert.ok(content.includes('cd frontend && pnpm install'));
+    assert.ok(content.includes("cd 'frontend' && pnpm install"));
     rmSync(dir, { recursive: true, force: true });
   });
 });
