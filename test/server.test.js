@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 describe('server — cache integration', () => {
   it('cache module is importable', async () => {
-    const cache = await import('./engine/cache.js');
+    const cache = await import('../lib/engine/cache.js');
     assert.ok(typeof cache.isCacheValid === 'function');
     assert.ok(typeof cache.applyCacheToWorktree === 'function');
     assert.ok(typeof cache.buildCache === 'function');

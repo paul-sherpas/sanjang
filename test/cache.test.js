@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { findLockfile, hashLockfile, isCacheValid, buildCache, applyCacheToWorktree, getCacheDir } from './cache.js';
+import { findLockfile, hashLockfile, isCacheValid, buildCache, applyCacheToWorktree, getCacheDir } from '../lib/engine/cache.js';
 
 describe('cache — findLockfile', () => {
   let dir;
