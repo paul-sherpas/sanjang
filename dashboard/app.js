@@ -247,15 +247,21 @@ function handleWsMessage(msg) {
 
 function renderAll() {
   const grid = document.getElementById('grid');
-  const empty = document.getElementById('empty-state');
+
+  // Show/hide the portal camps section based on whether camps exist
+  const campsSection = document.getElementById('portal-camps-section');
+  if (campsSection) {
+    if (playgrounds.size > 0) {
+      campsSection.classList.remove('hidden');
+    } else {
+      campsSection.classList.add('hidden');
+    }
+  }
 
   if (playgrounds.size === 0) {
     grid.innerHTML = '';
-    empty.classList.add('visible');
     return;
   }
-
-  empty.classList.remove('visible');
 
   // Build a map of existing cards
   const existingCards = new Map();
@@ -1122,7 +1128,7 @@ window.cancelTask = async function cancelTask(name) {
 function enterWorkspace(name) {
   currentWorkspace = name;
   document.getElementById('grid').classList.add('hidden');
-  document.getElementById('empty-state').classList.remove('visible');
+  document.getElementById('portal').classList.add('hidden');
   document.querySelector('header').classList.add('hidden');
   const ws = document.getElementById('workspace');
   ws.classList.remove('hidden');
@@ -1141,8 +1147,10 @@ function exitWorkspace() {
   if (wsPollingInterval) { clearInterval(wsPollingInterval); wsPollingInterval = null; }
   document.getElementById('workspace').classList.add('hidden');
   document.getElementById('grid').classList.remove('hidden');
+  document.getElementById('portal').classList.remove('hidden');
   document.querySelector('header').classList.remove('hidden');
   renderAll();
+  loadPortal();
 }
 window.exitWorkspace = exitWorkspace;
 
@@ -1325,6 +1333,80 @@ window.wsOpenTerminal = async function() {
 // Init
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Portal
+// ---------------------------------------------------------------------------
+
+async function loadPortal() {
+  const workList = document.getElementById('portal-work');
+  if (!workList) return;
+
+  try {
+    const work = await api('GET', '/api/my-work');
+
+    if (work.length === 0) {
+      workList.innerHTML = '<div class="portal-empty">진행 중인 작업이 없습니다</div>';
+      return;
+    }
+
+    workList.innerHTML = work.map(item => {
+      if (item.type === 'pr') {
+        const statusLabel = item.isDraft ? '초안'
+          : item.reviewStatus === 'APPROVED' ? '승인됨'
+          : item.reviewStatus === 'CHANGES_REQUESTED' ? '수정 요청'
+          : '팀이 보는 중';
+        const statusClass = item.isDraft ? 'draft'
+          : item.reviewStatus === 'APPROVED' ? 'approved'
+          : item.reviewStatus === 'CHANGES_REQUESTED' ? 'changes'
+          : 'pending';
+        const timeAgo = new Date(item.updatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+
+        return `
+        <div class="portal-work-item" onclick="${item.camp ? `enterWorkspace('${escHtml(item.camp)}')` : `window.open('${escHtml(item.prUrl)}','_blank')`}">
+          <div class="portal-work-left">
+            <span class="portal-work-icon">🟡</span>
+            <div>
+              <div class="portal-work-title">${escHtml(item.title)}</div>
+              <div class="portal-work-meta">PR #${item.prNumber} · ${timeAgo}</div>
+            </div>
+          </div>
+          <span class="portal-work-status portal-status-${statusClass}">${statusLabel}</span>
+        </div>`;
+      } else {
+        return `
+        <div class="portal-work-item" onclick="enterWorkspace('${escHtml(item.camp)}')">
+          <div class="portal-work-left">
+            <span class="portal-work-icon">🟢</span>
+            <div>
+              <div class="portal-work-title">${escHtml(item.title)}</div>
+              <div class="portal-work-meta">${escHtml(item.branch)}</div>
+            </div>
+          </div>
+          <span class="portal-work-status portal-status-active">작업 이어하기</span>
+        </div>`;
+      }
+    }).join('');
+  } catch (err) {
+    workList.innerHTML = '<div class="portal-empty">작업 목록을 불러올 수 없습니다</div>';
+  }
+}
+
+window.quickStart = async function quickStart() {
+  const input = document.getElementById('quickstart-input');
+  const description = input.value.trim();
+  if (!description) { toast('뭘 하고 싶은지 입력해주세요!', 'error'); return; }
+
+  try {
+    const result = await api('POST', '/api/quick-start', { description });
+    input.value = '';
+    toast(`캠프 "${result.name}" 생성됨!`, 'success');
+    await loadPortal();
+    renderAll();
+  } catch (err) {
+    toast(`생성 실패: ${err.message}`, 'error');
+  }
+};
+
 async function init() {
   try {
     const pgs = await api('GET', '/api/playgrounds');
@@ -1335,6 +1417,7 @@ async function init() {
     toast(`캠프 목록 로드 실패: ${err.message}`, 'error');
   }
   renderAll();
+  loadPortal();
   connectWs();
 }
 

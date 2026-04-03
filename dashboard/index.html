@@ -14,15 +14,37 @@
     <button class="btn btn-primary" onclick="openNewModal()">+ 새 캠프</button>
   </header>
 
-  <!-- Empty state -->
-  <div id="empty-state">
-    <span class="empty-icon">🏔</span>
-    <p>아직 캠프가 없습니다</p>
-    <span class="empty-hint"><strong>+ 새 캠프</strong>를 눌러 시작하세요</span>
-  </div>
+  <!-- Portal Home -->
+  <div id="portal">
+    <!-- 이어하기 섹션 -->
+    <div class="portal-section">
+      <h2 class="portal-section-title">이어하기</h2>
+      <div id="portal-work" class="portal-work-list">
+        <div class="portal-loading">불러오는 중...</div>
+      </div>
+    </div>
 
-  <!-- Card grid -->
-  <div class="grid" id="grid"></div>
+    <!-- 새로 시작 섹션 -->
+    <div class="portal-section">
+      <h2 class="portal-section-title">새로 시작</h2>
+      <div class="portal-quickstart">
+        <input class="form-input portal-quickstart-input" id="quickstart-input"
+          type="text" placeholder="뭘 하고 싶어? (예: 로그인 버튼 색상 변경)"
+          autocomplete="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter')quickStart()">
+        <button class="btn btn-primary" onclick="quickStart()">시작</button>
+      </div>
+      <div class="portal-quickstart-hint">
+        설명을 입력하면 자동으로 캠프가 만들어집니다
+      </div>
+    </div>
+
+    <!-- 기존 캠프가 있으면 아래에 카드 그리드 표시 -->
+    <div id="portal-camps-section" class="portal-section hidden">
+      <h2 class="portal-section-title">캠프</h2>
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
 
   <!-- Workspace View (full-screen camp) -->
   <div id="workspace" class="workspace hidden">
