@@ -1510,4 +1510,126 @@ header.hidden {
 /* Log line for task output */
 .log-line-task { color: var(--accent); }
 
+/* ============================================================
+   Portal Home
+   ============================================================ */
+
+#portal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+#portal.hidden {
+  display: none;
+}
+
+.portal-section {
+  margin-bottom: 32px;
+}
+
+.portal-section.hidden {
+  display: none;
+}
+
+.portal-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.portal-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.portal-work-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.portal-work-item:hover {
+  border-color: var(--accent);
+}
+
+.portal-work-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.portal-work-icon {
+  font-size: 16px;
+}
+
+.portal-work-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.portal-work-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.portal-work-status {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.portal-status-pending { background: #f5a62320; color: #f5a623; }
+.portal-status-approved { background: #4caf5020; color: #4caf50; }
+.portal-status-changes { background: #f4433620; color: #f44336; }
+.portal-status-draft { background: #9e9e9e20; color: #9e9e9e; }
+.portal-status-active { background: #2196f320; color: #2196f3; }
+
+.portal-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.portal-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.portal-quickstart {
+  display: flex;
+  gap: 8px;
+}
+
+.portal-quickstart-input {
+  flex: 1;
+}
+
+.portal-quickstart-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* Portal camps section uses the existing .grid layout */
+#portal-camps-section .grid {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+}
+
 .hidden { display: none !important; }
