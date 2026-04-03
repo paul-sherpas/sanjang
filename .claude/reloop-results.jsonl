@@ -1,0 +1,3 @@
+{"iteration":1,"task":"task-2: cp -Rc → fs.cpSync in cache.js for Linux compatibility","score":"null","delta":"0","status":"metric_error","git":"90213b9","ts":"2026-04-03T15:42:14Z"}
+{"iteration":2,"task":"task-3: README v0.2.0 update — document new features (portal, cache, multi-app, quickstart)","score":"null","delta":"0","status":"metric_error","git":"ff298f8","ts":"2026-04-03T15:43:28Z"}
+{"iteration":3,"task":"task-4: Error message improvements — add cache-related errors to friendlyError, better setup failure guidance","score":"null","delta":"0","status":"metric_error","git":"7d75cab","ts":"2026-04-03T15:45:01Z"}

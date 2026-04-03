@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { setPortConfig, portsForSlot, allocate } from '../lib/engine/ports.js';
+import { setPortConfig, portsForSlot, allocate } from '../lib/engine/ports.ts';
 
 describe('ports', () => {
   it('returns correct ports for a slot', () => {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { SanjangConfig, DetectedProject, DetectedApp, GenerateConfigResult } from './types.js';
+import type { SanjangConfig, DetectedProject, DetectedApp, GenerateConfigResult } from './types.ts';
 
 const CONFIG_FILE: string = 'sanjang.config.js';
 

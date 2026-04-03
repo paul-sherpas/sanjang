@@ -1,0 +1,80 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - heading "⛰ 산장" [level=1] [ref=e3]
+    - button "+ 새 캠프" [ref=e4] [cursor=pointer]
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - heading "이어하기" [level=2] [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e16] [cursor=pointer]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: 🟡
+            - generic [ref=e19]:
+              - generic [ref=e20]: "feat(openai): OpenAI Admin API 연동 전체 구현"
+              - generic [ref=e21]: "PR #4008 · 4월 3일"
+          - generic [ref=e22]: 팀이 보는 중
+        - generic [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]:
+            - generic [ref=e25]: 🟡
+            - generic [ref=e26]:
+              - generic [ref=e27]: "feat(anthropic): Anthropic Admin API 연동 — 읽기 전용 모니터링 + AI 도구 대시보드"
+              - generic [ref=e28]: "PR #3989 · 4월 3일"
+          - generic [ref=e29]: 팀이 보는 중
+        - generic [ref=e30] [cursor=pointer]:
+          - generic [ref=e31]:
+            - generic [ref=e32]: 🟡
+            - generic [ref=e33]:
+              - generic [ref=e34]: "feat: 카테고리별 관리번호 규칙 설정 + AI 패턴 감지 (Phase 1 MVP)"
+              - generic [ref=e35]: "PR #3971 · 4월 3일"
+          - generic [ref=e36]: 팀이 보는 중
+        - generic [ref=e37] [cursor=pointer]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: 🟡
+            - generic [ref=e40]:
+              - generic [ref=e41]: "feat(enrichment-agent): Data Pool Enrichment Agent — AI 기반 매핑 자동 고도화"
+              - generic [ref=e42]: "PR #3957 · 4월 3일"
+          - generic [ref=e43]: 팀이 보는 중
+        - generic [ref=e44] [cursor=pointer]:
+          - generic [ref=e45]:
+            - generic [ref=e46]: 🟡
+            - generic [ref=e47]:
+              - generic [ref=e48]: "feat(smply-web): 호스트-사용자 맵핑 다중 제안 지원 + 자동 탭 전환 제거"
+              - generic [ref=e49]: "PR #3870 · 4월 2일"
+          - generic [ref=e50]: 팀이 보는 중
+    - generic [ref=e10]:
+      - heading "새로 시작" [level=2] [ref=e11]
+      - generic [ref=e12]:
+        - 'textbox "뭘 하고 싶어? (예: 로그인 버튼 색상 변경)" [ref=e13]'
+        - button "시작" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]: 설명을 입력하면 자동으로 캠프가 만들어집니다
+    - generic [ref=e411]:
+      - heading "캠프" [level=2] [ref=e412]
+      - generic [ref=e414]:
+        - generic [ref=e415]:
+          - generic [ref=e416]:
+            - generic [ref=e417]:
+              - generic: 꿈에서 코딩중
+              - generic [ref=e420]: z z z
+            - generic [ref=e421]:
+              - generic [ref=e422] [cursor=pointer]: test-camp
+              - generic [ref=e423]: dev
+          - generic [ref=e424]:
+            - generic [ref=e425]: setting-up
+            - button "중지" [disabled] [ref=e426]
+        - generic [ref=e428]:
+          - textbox "뭐 해줄까?" [ref=e429]
+          - button "시키기" [ref=e430] [cursor=pointer]
+        - generic [ref=e431]:
+          - button "변경 내역" [ref=e432] [cursor=pointer]
+          - button "팀에 보내기" [ref=e433] [cursor=pointer]
+        - generic [ref=e434]:
+          - button "📸 스냅샷" [ref=e435] [cursor=pointer]
+          - button "🔄 처음부터" [ref=e436] [cursor=pointer]
+          - button "⬇️ 최신" [ref=e437] [cursor=pointer]
+          - button "🔧 디버그" [ref=e438] [cursor=pointer]
+          - button "🗑 삭제" [ref=e439] [cursor=pointer]
+        - generic [ref=e441] [cursor=pointer]:
+          - generic [ref=e442]: 로그
+          - generic [ref=e443]: ▼
+  - generic:
+    - generic: 캠프 "test-camp" 생성됨

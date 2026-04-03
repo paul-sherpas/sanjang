@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseConflictFiles, buildConflictPrompt } from '../lib/engine/conflict.js';
+import { parseConflictFiles, buildConflictPrompt } from '../lib/engine/conflict.ts';
 
 describe('conflict', () => {
   it('parses conflict file list from git status', () => {

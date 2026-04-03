@@ -5,13 +5,23 @@
  * buildClaudePrPrompt — prompt fed to `claude -p` for a rich PR body.
  */
 
+interface FallbackPrBodyOptions {
+  message: string;
+  actions: Array<{ description: string }>;
+  diffStat: string;
+}
+
+interface ClaudePrPromptOptions {
+  message: string;
+  diffStat: string;
+  diff: string;
+}
+
 /**
  * Build a fallback PR body when Claude CLI is unavailable.
- * @param {{ message: string, actions: Array<{description: string}>, diffStat: string }} opts
- * @returns {string}
  */
-export function buildFallbackPrBody({ message, actions, diffStat }) {
-  const lines = [
+export function buildFallbackPrBody({ message, actions, diffStat }: FallbackPrBodyOptions): string {
+  const lines: string[] = [
     '## Summary',
     '',
     message,
@@ -34,10 +44,8 @@ export function buildFallbackPrBody({ message, actions, diffStat }) {
 
 /**
  * Build a prompt for Claude to generate a rich PR body from the diff.
- * @param {{ message: string, diffStat: string, diff: string }} opts
- * @returns {string}
  */
-export function buildClaudePrPrompt({ message, diffStat, diff }) {
+export function buildClaudePrPrompt({ message, diffStat, diff }: ClaudePrPromptOptions): string {
   return [
     'You are writing a GitHub Pull Request description.',
     'The author described the change as: "' + message + '"',

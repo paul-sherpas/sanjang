@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import type { Camp, PortsConfig, PortAllocation, PortStatus } from '../types.js';
+import type { Camp, PortsConfig, PortAllocation, PortStatus } from '../types.ts';
 
 let portConfig: PortsConfig = {
   fe: { base: 3000, slots: 8 },

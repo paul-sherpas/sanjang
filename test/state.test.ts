@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { setCampsDir, getAll, getOne, upsert, remove } from '../lib/engine/state.js';
+import { setCampsDir, getAll, getOne, upsert, remove } from '../lib/engine/state.ts';
 
 describe('state', () => {
   let tmp: string;

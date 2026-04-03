@@ -1,6 +1,22 @@
 import { execSync } from 'node:child_process';
 
-function tryExec(cmd) {
+interface ProcessInfo {
+  feLogs?: string[];
+  feExitCode: number | null;
+}
+
+interface PlaygroundInfo {
+  fePort: number;
+}
+
+interface DiagnosticCheck {
+  name: string;
+  status: string;
+  detail: string;
+  guide: string | null;
+}
+
+function tryExec(cmd: string): string | null {
   try {
     return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
   } catch {
@@ -8,7 +24,7 @@ function tryExec(cmd) {
   }
 }
 
-function checkPortConflict(processInfo) {
+function checkPortConflict(processInfo: ProcessInfo): DiagnosticCheck {
   const combined = (processInfo.feLogs ?? []).join('');
   const hit = /address already in use/i.test(combined);
   return {
@@ -23,7 +39,7 @@ function checkPortConflict(processInfo) {
   };
 }
 
-function checkFrontendExit(processInfo) {
+function checkFrontendExit(processInfo: ProcessInfo): DiagnosticCheck {
   const { feExitCode, feLogs } = processInfo;
 
   if (feExitCode === null || feExitCode === 0) {
@@ -48,7 +64,7 @@ function checkFrontendExit(processInfo) {
   };
 }
 
-function checkFePort(pg) {
+function checkFePort(pg: PlaygroundInfo): DiagnosticCheck {
   const port = pg.fePort;
   const output = tryExec(`lsof -i :${port} -t`);
 
@@ -64,7 +80,7 @@ function checkFePort(pg) {
   };
 }
 
-export async function buildDiagnostics(pg, processInfo) {
+export async function buildDiagnostics(pg: PlaygroundInfo, processInfo: ProcessInfo): Promise<DiagnosticCheck[]> {
   return [
     checkPortConflict(processInfo),
     checkFrontendExit(processInfo),

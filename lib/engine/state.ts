@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Camp } from '../types.js';
+import type { Camp } from '../types.ts';
 
 let campsDir: string | null = null;
 

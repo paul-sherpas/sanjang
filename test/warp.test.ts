@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { detectWarp, buildOpenCommand } from '../lib/engine/warp.js';
+import { detectWarp, buildOpenCommand } from '../lib/engine/warp.ts';
 
 describe('warp', () => {
   it('detectWarp returns object with installed boolean', () => {

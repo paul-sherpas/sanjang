@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { detectProject, loadConfig, generateConfig, detectApps } from '../lib/config.js';
+import { detectProject, loadConfig, generateConfig, detectApps } from '../lib/config.ts';
 
 describe('config — detectProject', () => {
   it('detects Next.js', () => {

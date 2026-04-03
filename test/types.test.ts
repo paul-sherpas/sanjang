@@ -19,7 +19,7 @@ import type {
   DiagnosticsResult,
   BroadcastMessage,
   EventCallback,
-} from '../lib/types.js';
+} from '../lib/types.ts';
 
 describe('types', () => {
   it('Camp interface satisfies expected shape', () => {

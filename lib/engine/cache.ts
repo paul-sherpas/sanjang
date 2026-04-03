@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync
 import { join, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import type { CacheValidation, CacheBuildResult, CacheApplyResult, LockfileInfo, SanjangConfig } from '../types.js';
+import type { CacheValidation, CacheBuildResult, CacheApplyResult, LockfileInfo, SanjangConfig } from '../types.ts';
 
 const LOCKFILES: readonly string[] = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'bun.lock'];
 

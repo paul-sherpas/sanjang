@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildDiagnostics } from '../lib/engine/diagnostics.js';
+import { buildDiagnostics } from '../lib/engine/diagnostics.ts';
 
 describe('diagnostics guides', () => {
   it('port conflict includes actionable guide', async () => {
@@ -12,8 +12,8 @@ describe('diagnostics guides', () => {
     };
     const checks = await buildDiagnostics(pg, processInfo);
     const portCheck = checks.find(c => c.name === 'port-conflict');
-    assert.ok(portCheck.guide);
-    assert.ok(portCheck.guide.length > 0);
+    assert.ok(portCheck?.guide);
+    assert.ok(portCheck!.guide!.length > 0);
   });
 
   it('frontend exit error includes guide', async () => {
@@ -21,7 +21,7 @@ describe('diagnostics guides', () => {
     const processInfo = { feLogs: ['MODULE_NOT_FOUND'], feExitCode: 1 };
     const checks = await buildDiagnostics(pg, processInfo);
     const exitCheck = checks.find(c => c.name === 'frontend-exit');
-    assert.ok(exitCheck.guide);
+    assert.ok(exitCheck?.guide);
   });
 
   it('ok status has no guide', async () => {
@@ -29,6 +29,6 @@ describe('diagnostics guides', () => {
     const processInfo = { feLogs: [], feExitCode: null };
     const checks = await buildDiagnostics(pg, processInfo);
     const exitCheck = checks.find(c => c.name === 'frontend-exit');
-    assert.equal(exitCheck.guide, null);
+    assert.equal(exitCheck?.guide, null);
   });
 });

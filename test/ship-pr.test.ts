@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-import { buildFallbackPrBody } from '../lib/engine/pr.js';
+import { buildFallbackPrBody } from '../lib/engine/pr.ts';
 
 describe('ship PR creation', () => {
   it('gh CLI detection returns boolean', () => {
@@ -34,7 +34,7 @@ describe('ship PR creation', () => {
   });
 
   it('buildClaudePrPrompt includes diff context', async () => {
-    const { buildClaudePrPrompt } = await import('../lib/engine/pr.js');
+    const { buildClaudePrPrompt } = await import('../lib/engine/pr.ts');
     const prompt = buildClaudePrPrompt({
       message: 'Add dark mode',
       diffStat: ' src/theme.js | 20 ++++\n 1 file changed',

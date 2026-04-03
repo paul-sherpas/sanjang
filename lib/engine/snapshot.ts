@@ -1,21 +1,28 @@
 import simpleGit from 'simple-git';
-import { campPath } from './worktree.js';
+import { campPath } from './worktree.ts';
 
 const STASH_PREFIX = 'sanjang-snapshot:';
 
-export async function saveSnapshot(name, label) {
+interface StashEntry {
+  index: number;
+  message: string;
+  isSanjangSnapshot: boolean;
+  date: string;
+}
+
+export async function saveSnapshot(name: string, label: string): Promise<void> {
   const git = simpleGit(campPath(name));
   await git.raw(['stash', 'push', '--include-untracked', '-m', `${STASH_PREFIX}${label}`]);
 }
 
-export async function restoreSnapshot(name, index) {
+export async function restoreSnapshot(name: string, index: number): Promise<void> {
   const git = simpleGit(campPath(name));
   await git.raw(['checkout', '--', '.']).catch(() => {});
   await git.raw(['clean', '-fd']).catch(() => {});
   await git.raw(['stash', 'apply', `stash@{${index}}`]);
 }
 
-export async function listSnapshots(name) {
+export async function listSnapshots(name: string): Promise<StashEntry[]> {
   const git = simpleGit(campPath(name));
   try {
     const result = await git.raw(['stash', 'list', '--format=%gd|%s|%ci']);
