@@ -8,7 +8,9 @@
   },
   "scripts": {
     "start": "node bin/sanjang.js",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --experimental-transform-types --test test/**/*.test.ts bin/__tests__/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "npx @biomejs/biome check lib/ test/ bin/"
   },
   "dependencies": {
     "express": "^4.19.2",

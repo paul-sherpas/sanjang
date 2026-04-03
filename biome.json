@@ -1,14 +1,18 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.10/schema.json",
   "files": {
-    "include": ["lib/**/*.ts", "bin/**/*.ts", "test/**/*.ts"]
+    "includes": ["lib/**/*.ts", "bin/**/*.ts", "test/**/*.ts"]
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noExplicitAny": "error"
+        "noExplicitAny": "error",
+        "noControlCharactersInRegex": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
       }
     }
   },

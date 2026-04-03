@@ -1,16 +1,16 @@
-import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import type { SanjangConfig, DetectedProject, DetectedApp, GenerateConfigResult } from './types.ts';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import type { DetectedApp, DetectedProject, GenerateConfigResult, SanjangConfig } from "./types.ts";
 
-const CONFIG_FILE: string = 'sanjang.config.js';
+const CONFIG_FILE: string = "sanjang.config.js";
 
 const DEFAULTS: SanjangConfig = {
   dev: {
-    command: 'npm run dev',
+    command: "npm run dev",
     port: 3000,
-    portFlag: '--port',
-    cwd: '.',
+    portFlag: "--port",
+    cwd: ".",
     env: {},
   },
   setup: null,
@@ -30,8 +30,8 @@ export async function loadConfig(projectRoot: string): Promise<SanjangConfig> {
   const configPath = join(projectRoot, CONFIG_FILE);
 
   if (!existsSync(configPath)) {
-    console.warn('⚠️ sanjang.config.js를 찾을 수 없습니다. 기본 설정을 사용합니다.');
-    console.warn('  → sanjang init 으로 프로젝트에 맞는 설정을 생성하세요.');
+    console.warn("⚠️ sanjang.config.js를 찾을 수 없습니다. 기본 설정을 사용합니다.");
+    console.warn("  → sanjang init 으로 프로젝트에 맞는 설정을 생성하세요.");
     return { ...DEFAULTS, _autoDetected: false };
   }
 
@@ -48,17 +48,17 @@ export async function loadConfig(projectRoot: string): Promise<SanjangConfig> {
 function mergeConfig(user: Record<string, unknown>): SanjangConfig {
   const config: SanjangConfig = { ...DEFAULTS };
 
-  if (typeof user.dev === 'string') {
+  if (typeof user.dev === "string") {
     config.dev = { ...DEFAULTS.dev, command: user.dev };
   } else if (user.dev) {
-    config.dev = { ...DEFAULTS.dev, ...(user.dev as Partial<SanjangConfig['dev']>) };
+    config.dev = { ...DEFAULTS.dev, ...(user.dev as Partial<SanjangConfig["dev"]>) };
   }
 
   if (user.setup) config.setup = user.setup as string;
   if (user.copyFiles) config.copyFiles = user.copyFiles as string[];
-  if (user.backend) config.backend = user.backend as SanjangConfig['backend'];
+  if (user.backend) config.backend = user.backend as SanjangConfig["backend"];
   if (user.ports) {
-    const userPorts = user.ports as Partial<SanjangConfig['ports']>;
+    const userPorts = user.ports as Partial<SanjangConfig["ports"]>;
     config.ports = {
       fe: { ...DEFAULTS.ports.fe, ...userPorts.fe },
       be: { ...DEFAULTS.ports.be, ...userPorts.be },
@@ -74,98 +74,101 @@ function mergeConfig(user: Record<string, unknown>): SanjangConfig {
 export function detectProject(projectRoot: string): DetectedProject {
   const has = (f: string): boolean => existsSync(join(projectRoot, f));
   const readJson = (f: string): Record<string, unknown> | null => {
-    try { return JSON.parse(readFileSync(join(projectRoot, f), 'utf8')) as Record<string, unknown>; }
-    catch { return null; }
+    try {
+      return JSON.parse(readFileSync(join(projectRoot, f), "utf8")) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
   };
 
   // Framework detection
-  if (has('next.config.js') || has('next.config.mjs') || has('next.config.ts')) {
+  if (has("next.config.js") || has("next.config.mjs") || has("next.config.ts")) {
     return {
-      framework: 'Next.js',
-      dev: { command: 'npx next dev', port: 3000, portFlag: '-p', cwd: '.', env: {} },
-      setup: has('bun.lockb') ? 'bun install' : has('pnpm-lock.yaml') ? 'pnpm install' : 'npm install',
+      framework: "Next.js",
+      dev: { command: "npx next dev", port: 3000, portFlag: "-p", cwd: ".", env: {} },
+      setup: has("bun.lockb") ? "bun install" : has("pnpm-lock.yaml") ? "pnpm install" : "npm install",
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
-  if (has('nuxt.config.js') || has('nuxt.config.ts')) {
+  if (has("nuxt.config.js") || has("nuxt.config.ts")) {
     return {
-      framework: 'Nuxt',
-      dev: { command: 'npx nuxt dev', port: 3000, portFlag: '--port', cwd: '.', env: {} },
+      framework: "Nuxt",
+      dev: { command: "npx nuxt dev", port: 3000, portFlag: "--port", cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
-  if (has('svelte.config.js') || has('svelte.config.ts')) {
+  if (has("svelte.config.js") || has("svelte.config.ts")) {
     return {
-      framework: 'SvelteKit',
-      dev: { command: 'npx vite dev', port: 5173, portFlag: '--port', cwd: '.', env: {} },
+      framework: "SvelteKit",
+      dev: { command: "npx vite dev", port: 5173, portFlag: "--port", cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
-  if (has('angular.json')) {
+  if (has("angular.json")) {
     return {
-      framework: 'Angular',
-      dev: { command: 'npx ng serve', port: 4200, portFlag: '--port', cwd: '.', env: {} },
-      setup: 'npm install',
+      framework: "Angular",
+      dev: { command: "npx ng serve", port: 4200, portFlag: "--port", cwd: ".", env: {} },
+      setup: "npm install",
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
-  if (has('vite.config.js') || has('vite.config.ts') || has('vite.config.mjs')) {
+  if (has("vite.config.js") || has("vite.config.ts") || has("vite.config.mjs")) {
     return {
-      framework: 'Vite',
-      dev: { command: 'npx vite dev', port: 5173, portFlag: '--port', cwd: '.', env: {} },
+      framework: "Vite",
+      dev: { command: "npx vite dev", port: 5173, portFlag: "--port", cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
   // ClojureScript / shadow-cljs (root or common subdirectories)
-  const shadowDirs = ['.', 'frontend', 'client', 'web', 'app'];
+  const shadowDirs = [".", "frontend", "client", "web", "app"];
   for (const dir of shadowDirs) {
-    const prefix = dir === '.' ? '' : `${dir}/`;
+    const prefix = dir === "." ? "" : `${dir}/`;
     if (has(`${prefix}shadow-cljs.edn`)) {
       const hasBb = has(`${prefix}bb.edn`);
       return {
-        framework: 'shadow-cljs',
-        dev: { command: hasBb ? 'bb dev' : 'npx shadow-cljs watch app', port: 3000, portFlag: null, cwd: dir, env: {} },
-        setup: 'npm install',
+        framework: "shadow-cljs",
+        dev: { command: hasBb ? "bb dev" : "npx shadow-cljs watch app", port: 3000, portFlag: null, cwd: dir, env: {} },
+        setup: "npm install",
         copyFiles: findEnvFiles(projectRoot),
       };
     }
   }
 
   // Monorepo detection
-  if (has('turbo.json')) {
-    const turbo = readJson('turbo.json');
+  if (has("turbo.json")) {
+    const turbo = readJson("turbo.json");
     return {
-      framework: 'Turborepo',
-      dev: { command: 'npx turbo run dev', port: 3000, portFlag: null, cwd: '.', env: {} },
+      framework: "Turborepo",
+      dev: { command: "npx turbo run dev", port: 3000, portFlag: null, cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
-      _note: 'Turborepo detected. You may need to adjust the dev command to filter a specific app.',
+      _note: "Turborepo detected. You may need to adjust the dev command to filter a specific app.",
     };
   }
 
   // Fallback: package.json scripts
-  const pkg = readJson('package.json');
+  const pkg = readJson("package.json");
   if ((pkg?.scripts as Record<string, unknown> | undefined)?.dev) {
     return {
-      framework: 'Node.js',
-      dev: { command: 'npm run dev', port: 3000, portFlag: '--port', cwd: '.', env: {} },
+      framework: "Node.js",
+      dev: { command: "npm run dev", port: 3000, portFlag: "--port", cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
     };
   }
 
   return {
-    framework: 'unknown',
-    dev: { command: 'npm run dev', port: 3000, portFlag: '--port', cwd: '.', env: {} },
-    setup: 'npm install',
+    framework: "unknown",
+    dev: { command: "npm run dev", port: 3000, portFlag: "--port", cwd: ".", env: {} },
+    setup: "npm install",
     copyFiles: [],
   };
 }
@@ -198,23 +201,26 @@ export function detectApps(projectRoot: string): DetectedApp[] {
 }
 
 function detectPackageManager(root: string): string {
-  if (existsSync(join(root, 'bun.lockb')) || existsSync(join(root, 'bun.lock'))) return 'bun install';
-  if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm install';
-  if (existsSync(join(root, 'yarn.lock'))) return 'yarn install';
-  return 'npm install';
+  if (existsSync(join(root, "bun.lockb")) || existsSync(join(root, "bun.lock"))) return "bun install";
+  if (existsSync(join(root, "pnpm-lock.yaml"))) return "pnpm install";
+  if (existsSync(join(root, "yarn.lock"))) return "yarn install";
+  return "npm install";
 }
 
 function findEnvFiles(root: string): string[] {
-  const envFiles = ['.env', '.env.local', '.env.development', '.env.development.local'];
-  return envFiles.filter(f => existsSync(join(root, f)));
+  const envFiles = [".env", ".env.local", ".env.development", ".env.development.local"];
+  return envFiles.filter((f) => existsSync(join(root, f)));
 }
 
-export function generateConfig(projectRoot: string, options: { appDir?: string; force?: boolean } = {}): GenerateConfigResult {
+export function generateConfig(
+  projectRoot: string,
+  options: { appDir?: string; force?: boolean } = {},
+): GenerateConfigResult {
   const { appDir, force } = options;
   const configPath = join(projectRoot, CONFIG_FILE);
 
   if (existsSync(configPath) && !force) {
-    return { created: false, message: 'sanjang.config.js already exists.' };
+    return { created: false, message: "sanjang.config.js already exists." };
   }
 
   // Detect from selected app subdirectory or root
@@ -222,55 +228,55 @@ export function generateConfig(projectRoot: string, options: { appDir?: string; 
   const detected = detectProject(detectRoot);
 
   // Override cwd and setup for subdirectory apps
-  if (appDir && appDir !== '.') {
+  if (appDir && appDir !== ".") {
     detected.dev.cwd = appDir;
     if (detected.setup) {
       detected.setup = `cd '${appDir.replace(/'/g, "'\\''")}' && ${detected.setup}`;
     }
-    detected.copyFiles = findEnvFiles(join(projectRoot, appDir)).map(f => `${appDir}/${f}`);
+    detected.copyFiles = findEnvFiles(join(projectRoot, appDir)).map((f) => `${appDir}/${f}`);
   }
 
   const lines = [
-    'export default {',
+    "export default {",
     `  // ${detected.framework} detected`,
-    '',
-    '  // Dev server command',
-    '  dev: {',
+    "",
+    "  // Dev server command",
+    "  dev: {",
     `    command: '${detected.dev.command}',`,
     `    port: ${detected.dev.port},`,
-    `    portFlag: ${detected.dev.portFlag ? `'${detected.dev.portFlag}'` : 'null'},`,
+    `    portFlag: ${detected.dev.portFlag ? `'${detected.dev.portFlag}'` : "null"},`,
     `    cwd: '${detected.dev.cwd}',`,
-    '  },',
-    '',
+    "  },",
+    "",
   ];
 
   if (detected.setup) {
     lines.push(`  // Install dependencies after creating a camp`);
     lines.push(`  setup: '${detected.setup}',`);
-    lines.push('');
+    lines.push("");
   }
 
   if (detected.copyFiles.length) {
-    lines.push('  // Copy gitignored files from main repo');
+    lines.push("  // Copy gitignored files from main repo");
     lines.push(`  copyFiles: ${JSON.stringify(detected.copyFiles)},`);
-    lines.push('');
+    lines.push("");
   }
 
   if (detected._note) {
     lines.push(`  // NOTE: ${detected._note}`);
-    lines.push('');
+    lines.push("");
   }
 
-  lines.push('  // (optional) Backend server');
-  lines.push('  // backend: {');
+  lines.push("  // (optional) Backend server");
+  lines.push("  // backend: {");
   lines.push("  //   command: 'npm run start:api',");
-  lines.push('  //   port: 8000,');
+  lines.push("  //   port: 8000,");
   lines.push("  //   healthCheck: '/health',");
-  lines.push('  // },');
-  lines.push('};');
-  lines.push('');
+  lines.push("  // },");
+  lines.push("};");
+  lines.push("");
 
-  writeFileSync(configPath, lines.join('\n'), 'utf8');
+  writeFileSync(configPath, lines.join("\n"), "utf8");
 
   return {
     created: true,

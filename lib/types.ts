@@ -6,7 +6,7 @@ export interface Camp {
   slot: number;
   fePort: number;
   bePort: number;
-  status: 'stopped' | 'starting' | 'starting-frontend' | 'running' | 'setting-up' | 'error';
+  status: "stopped" | "starting" | "starting-frontend" | "running" | "setting-up" | "error";
   description?: string;
 }
 

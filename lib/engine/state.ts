@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
-import type { Camp } from '../types.ts';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Camp } from "../types.ts";
 
 let campsDir: string | null = null;
 
@@ -9,12 +9,12 @@ export function setCampsDir(dir: string): void {
 }
 
 export function getCampsDir(): string {
-  if (!campsDir) throw new Error('campsDir not initialized. Call setCampsDir() first.');
+  if (!campsDir) throw new Error("campsDir not initialized. Call setCampsDir() first.");
   return campsDir;
 }
 
 function stateFile(): string {
-  return join(getCampsDir(), 'state.json');
+  return join(getCampsDir(), "state.json");
 }
 
 function ensureDir(): void {
@@ -25,7 +25,7 @@ function read(): Camp[] {
   const f = stateFile();
   if (!existsSync(f)) return [];
   try {
-    return JSON.parse(readFileSync(f, 'utf8'));
+    return JSON.parse(readFileSync(f, "utf8"));
   } catch {
     return [];
   }
@@ -34,8 +34,8 @@ function read(): Camp[] {
 function write(records: Camp[]): void {
   ensureDir();
   // Atomic write: write to temp file then rename to prevent corruption
-  const tmp = stateFile() + '.tmp';
-  writeFileSync(tmp, JSON.stringify(records, null, 2), 'utf8');
+  const tmp = stateFile() + ".tmp";
+  writeFileSync(tmp, JSON.stringify(records, null, 2), "utf8");
   renameSync(tmp, stateFile());
 }
 
