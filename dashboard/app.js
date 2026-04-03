@@ -220,6 +220,16 @@ function handleWsMessage(msg) {
       toast(`PR이 만들어졌습니다!`, 'success');
       break;
     }
+
+    case 'conflict-resolved': {
+      toast(`충돌이 해결되었습니다!`, 'success');
+      break;
+    }
+
+    case 'conflict-failed': {
+      toast(data?.message || '충돌 해결에 실패했습니다.', 'error');
+      break;
+    }
   }
 }
 
@@ -1015,21 +1025,61 @@ window.shipPg = async function shipPg() {
 };
 
 // ---------------------------------------------------------------------------
-// 최신 반영 (sync)
+// 최신 반영 (sync) + 충돌 해결
 // ---------------------------------------------------------------------------
+
+let conflictCampName = null;
 
 window.syncPg = async function syncPg(name) {
   if (!confirm('팀의 최신 변경사항을 가져올까요?')) return;
   try {
     const result = await api('POST', `/api/playgrounds/${name}/sync`);
     if (result.conflict) {
-      toast(result.message, 'error');
+      conflictCampName = name;
+      const fileList = document.getElementById('conflict-files');
+      if (result.conflictFiles?.length) {
+        fileList.innerHTML = `<div style="font-size:12px;background:var(--bg-card);padding:8px;border-radius:4px">
+          충돌 파일: ${result.conflictFiles.map(f => `<code>${escHtml(f)}</code>`).join(', ')}
+        </div>`;
+      } else {
+        fileList.innerHTML = '';
+      }
+      document.getElementById('conflict-modal').classList.add('open');
     } else {
       toast(result.message, 'success');
     }
   } catch (err) {
     toast(`최신 반영 실패: ${err.message}`, 'error');
   }
+};
+
+window.resolveConflict = async function resolveConflict(strategy) {
+  if (!conflictCampName) return;
+  document.getElementById('conflict-modal').classList.remove('open');
+  const label = { claude: 'Claude가 해결 중...', ours: '내 것으로 적용 중...', theirs: '팀 것으로 적용 중...' };
+  toast(label[strategy] || '처리 중...', 'info');
+  try {
+    await api('POST', `/api/playgrounds/${conflictCampName}/resolve-conflict`, { strategy });
+    if (strategy !== 'claude') {
+      toast('충돌이 해결되었습니다!', 'success');
+    }
+    // claude strategy: result arrives via WebSocket conflict-resolved/conflict-failed
+  } catch (err) {
+    toast(`충돌 해결 실패: ${err.message}`, 'error');
+  }
+  conflictCampName = null;
+};
+
+window.resolveAbort = async function resolveAbort() {
+  if (!conflictCampName) return;
+  document.getElementById('conflict-modal').classList.remove('open');
+  try {
+    await api('POST', `/api/playgrounds/${conflictCampName}/resolve-abort`);
+    toast('원래대로 되돌렸습니다.', 'success');
+  } catch (err) {
+    toast(`되돌리기 실패: ${err.message}`, 'error');
+  }
+  conflictCampName = null;
 };
 
 // ---------------------------------------------------------------------------

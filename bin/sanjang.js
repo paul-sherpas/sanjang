@@ -44,9 +44,6 @@ if (command === 'init') {
     console.log(`⛰ ${result.message}`);
     console.log(`  프레임워크: ${result.framework}`);
     console.log(`  설정 파일: ${result.configPath}`);
-    console.log('');
-    console.log('  다음 단계: sanjang.config.js를 확인하고 필요하면 수정하세요.');
-    console.log('  서버 시작: npx sanjang 또는 node .sanjang/bin/sanjang.js');
   } else {
     console.log(`⛰ ${result.message}`);
   }
@@ -59,6 +56,18 @@ if (command === 'init') {
       (await import('node:fs')).appendFileSync(gitignorePath, '\n# Sanjang local dev camps\n.sanjang/\n');
       console.log('  .gitignore에 .sanjang/ 추가됨');
     }
+  }
+
+  // Auto-start server unless --no-start
+  const noStart = args.includes('--no-start');
+  if (!noStart) {
+    console.log('');
+    console.log('  서버를 시작합니다...');
+    const { startServer } = await import('../lib/server.js');
+    await startServer(projectRoot, { port });
+  } else {
+    console.log('');
+    console.log('  다음 단계: sanjang 또는 npx sanjang 으로 서버를 시작하세요.');
   }
 } else if (command === 'help' || command === '--help' || command === '-h') {
   console.log(`
