@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -144,6 +144,48 @@ describe('config — generateConfig', () => {
     const result = generateConfig(genDir);
     assert.equal(result.created, false);
     rmSync(genDir, { recursive: true, force: true });
+  });
+
+  it('generates config for selected app', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-gen-'));
+    mkdirSync(join(dir, 'web'));
+    writeFileSync(join(dir, 'web', 'next.config.js'), '');
+    writeFileSync(join(dir, 'web', 'package.json'), '{}');
+
+    const result = generateConfig(dir, { appDir: 'web' });
+    assert.equal(result.created, true);
+    assert.equal(result.framework, 'Next.js');
+
+    const content = readFileSync(join(dir, 'sanjang.config.js'), 'utf8');
+    assert.ok(content.includes("cwd: 'web'"));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('overwrites config with force option', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-gen-'));
+    writeFileSync(join(dir, 'sanjang.config.js'), 'export default {}');
+    writeFileSync(join(dir, 'next.config.js'), '');
+
+    const result = generateConfig(dir, { force: true });
+    assert.equal(result.created, true);
+    assert.equal(result.framework, 'Next.js');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('generates setup with cd for subdirectory app', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-gen-'));
+    mkdirSync(join(dir, 'frontend'));
+    writeFileSync(join(dir, 'frontend', 'vite.config.js'), '');
+    writeFileSync(join(dir, 'frontend', 'package.json'), '{}');
+    writeFileSync(join(dir, 'frontend', 'pnpm-lock.yaml'), '');
+
+    const result = generateConfig(dir, { appDir: 'frontend' });
+    assert.equal(result.created, true);
+
+    const content = readFileSync(join(dir, 'sanjang.config.js'), 'utf8');
+    assert.ok(content.includes("cwd: 'frontend'"));
+    assert.ok(content.includes('cd frontend && pnpm install'));
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 
