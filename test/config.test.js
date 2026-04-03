@@ -7,22 +7,14 @@ import { tmpdir } from 'node:os';
 import { detectProject, loadConfig, generateConfig } from '../lib/config.js';
 
 describe('config — detectProject', () => {
-  let tmp;
-
-  before(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'sanjang-config-test-'));
-  });
-
-  after(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
   it('detects Next.js', () => {
-    writeFileSync(join(tmp, 'next.config.js'), 'module.exports = {}');
-    writeFileSync(join(tmp, 'package.json'), '{"scripts":{"dev":"next dev"}}');
-    const result = detectProject(tmp);
+    const nextDir = mkdtempSync(join(tmpdir(), 'sanjang-next-'));
+    writeFileSync(join(nextDir, 'next.config.js'), 'module.exports = {}');
+    writeFileSync(join(nextDir, 'package.json'), '{"scripts":{"dev":"next dev"}}');
+    const result = detectProject(nextDir);
     assert.equal(result.framework, 'Next.js');
     assert.equal(result.dev.portFlag, '-p');
+    rmSync(nextDir, { recursive: true, force: true });
   });
 
   it('detects Vite', () => {
