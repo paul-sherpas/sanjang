@@ -92,6 +92,28 @@ describe('config — detectProject', () => {
     rmSync(bunDir, { recursive: true, force: true });
   });
 
+  it('detects shadow-cljs with bb.edn', () => {
+    const clDir = mkdtempSync(join(tmpdir(), 'sanjang-cljs-'));
+    writeFileSync(join(clDir, 'shadow-cljs.edn'), '{}');
+    writeFileSync(join(clDir, 'bb.edn'), '{}');
+    const result = detectProject(clDir);
+    assert.equal(result.framework, 'shadow-cljs');
+    assert.equal(result.dev.command, 'bb dev');
+    assert.equal(result.dev.portFlag, null);
+    rmSync(clDir, { recursive: true, force: true });
+  });
+
+  it('detects shadow-cljs in subdirectory', () => {
+    const monoDir = mkdtempSync(join(tmpdir(), 'sanjang-mono-'));
+    mkdirSync(join(monoDir, 'frontend'));
+    writeFileSync(join(monoDir, 'frontend', 'shadow-cljs.edn'), '{}');
+    writeFileSync(join(monoDir, 'frontend', 'bb.edn'), '{}');
+    const result = detectProject(monoDir);
+    assert.equal(result.framework, 'shadow-cljs');
+    assert.equal(result.dev.cwd, 'frontend');
+    rmSync(monoDir, { recursive: true, force: true });
+  });
+
   it('detects pnpm package manager', () => {
     const pnpmDir = mkdtempSync(join(tmpdir(), 'sanjang-pnpm-'));
     writeFileSync(join(pnpmDir, 'vite.config.js'), '');
