@@ -40,6 +40,8 @@ function api<T = Record<string, unknown>>(
 function createMockProject() {
   const root = mkdtempSync(join(tmpdir(), "sanjang-mywork-"));
   execSync("git init", { cwd: root, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd: root, stdio: "pipe" });
+  execSync('git config user.email "test@test.local"', { cwd: root, stdio: "pipe" });
   execSync("git checkout -b main", { cwd: root, stdio: "pipe" });
 
   writeFileSync(

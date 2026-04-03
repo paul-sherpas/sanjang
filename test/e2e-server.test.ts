@@ -52,6 +52,8 @@ interface MockProject {
 function createMockProject(opts: MockProjectOptions = {}): MockProject {
   const root = mkdtempSync(join(tmpdir(), "sanjang-e2e-"));
   execSync("git init", { cwd: root, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd: root, stdio: "pipe" });
+  execSync('git config user.email "test@test.local"', { cwd: root, stdio: "pipe" });
   execSync("git checkout -b main", { cwd: root, stdio: "pipe" });
 
   // Create a simple project structure
