@@ -22,6 +22,8 @@ export interface BackendConfig {
   command: string;
   port: number;
   healthCheck?: string;
+  cwd?: string;
+  env?: Record<string, string>;
 }
 
 export interface PortRange {

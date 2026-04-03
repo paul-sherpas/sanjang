@@ -1,13 +1,25 @@
-import { spawn, execSync } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
-import { campPath, getProjectRoot } from './worktree.js';
+import { campPath, getProjectRoot } from './worktree.ts';
+import type { SanjangConfig, EventCallback, BroadcastMessage } from '../types.ts';
 
-const procs = new Map();
-let projectConfig = null;
-let sharedBeProc = null;
+interface CampProcessEntry {
+  feProc: ChildProcess | null;
+  feLogs: string[];
+  feExitCode: number | null;
+}
 
-export function setConfig(config) {
+export interface ProcessInfo {
+  feLogs: string[];
+  feExitCode: number | null;
+}
+
+const procs: Map<string, CampProcessEntry> = new Map();
+let projectConfig: SanjangConfig | null = null;
+let sharedBeProc: ChildProcess | null = null;
+
+export function setConfig(config: SanjangConfig): void {
   projectConfig = config;
 }
 
@@ -15,10 +27,10 @@ export function setConfig(config) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function waitForPort(port, timeoutMs) {
+function waitForPort(port: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
-    function attempt() {
+    function attempt(): void {
       const sock = createConnection({ port, host: 'localhost' });
       sock.once('connect', () => { sock.destroy(); resolve(); });
       sock.once('error', () => {
@@ -34,10 +46,10 @@ function waitForPort(port, timeoutMs) {
   });
 }
 
-function waitForHttp(url, timeoutMs) {
+function waitForHttp(url: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
-    async function attempt() {
+    async function attempt(): Promise<void> {
       try {
         const res = await fetch(url);
         if (res.ok) return resolve();
@@ -52,8 +64,13 @@ function waitForHttp(url, timeoutMs) {
   });
 }
 
-function attachLogs(child, logBuf, source, onEvent) {
-  function handleData(data) {
+function attachLogs(
+  child: ChildProcess,
+  logBuf: string[],
+  source: string,
+  onEvent: EventCallback,
+): void {
+  function handleData(data: Buffer): void {
     const text = data.toString();
     logBuf.push(text);
     for (const line of text.split('\n')) {
@@ -68,7 +85,7 @@ function attachLogs(child, logBuf, source, onEvent) {
 // Backend (shared, optional)
 // ---------------------------------------------------------------------------
 
-async function ensureBackend(onEvent) {
+async function ensureBackend(onEvent: EventCallback): Promise<void> {
   const be = projectConfig?.backend;
   if (!be) return; // No backend configured
 
@@ -98,8 +115,8 @@ async function ensureBackend(onEvent) {
   });
   beProc.unref();
   sharedBeProc = beProc;
-  beProc.stdout?.on('data', (d) => onEvent({ type: 'log', source: 'backend', data: d.toString() }));
-  beProc.stderr?.on('data', (d) => onEvent({ type: 'log', source: 'backend', data: d.toString() }));
+  beProc.stdout?.on('data', (d: Buffer) => onEvent({ type: 'log', source: 'backend', data: d.toString() }));
+  beProc.stderr?.on('data', (d: Buffer) => onEvent({ type: 'log', source: 'backend', data: d.toString() }));
 
   if (be.healthCheck) {
     const healthUrl = be.healthCheck.startsWith('/')
@@ -117,14 +134,19 @@ async function ensureBackend(onEvent) {
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function startCamp(pg, onEvent) {
+interface StartCampParams {
+  name: string;
+  fePort: number;
+}
+
+export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Promise<void> {
   const { name, fePort } = pg;
   const wtPath = campPath(name);
   const dev = projectConfig?.dev;
 
   if (!dev) throw new Error('dev command not configured');
 
-  const entry = {
+  const entry: CampProcessEntry = {
     feProc: null,
     feLogs: [],
     feExitCode: null,
@@ -135,7 +157,8 @@ export async function startCamp(pg, onEvent) {
   try {
     await ensureBackend(onEvent);
   } catch (err) {
-    onEvent({ type: 'log', source: 'sanjang', data: `⚠️ Backend 시작 실패 — FE만 띄웁니다. (${err.message})` });
+    const message = err instanceof Error ? err.message : String(err);
+    onEvent({ type: 'log', source: 'sanjang', data: `⚠️ Backend 시작 실패 — FE만 띄웁니다. (${message})` });
   }
 
   // Step 2: Frontend
@@ -165,7 +188,7 @@ export async function startCamp(pg, onEvent) {
 
   entry.feProc = feProc;
   attachLogs(feProc, entry.feLogs, 'frontend', onEvent);
-  feProc.on('exit', (code) => {
+  feProc.on('exit', (code: number | null) => {
     entry.feExitCode = code;
     onEvent({ type: 'process-exit', source: 'frontend', data: code });
   });
@@ -177,20 +200,21 @@ export async function startCamp(pg, onEvent) {
   onEvent({ type: 'status', data: 'running' });
 }
 
-export function stopCamp(name) {
+export function stopCamp(name: string): void {
   const entry = procs.get(name);
   if (!entry) return;
   if (entry.feProc && !entry.feProc.killed) {
     entry.feProc.kill('SIGTERM');
     // SIGKILL fallback if still alive after 5s
+    const proc = entry.feProc;
     setTimeout(() => {
-      try { if (!entry.feProc.killed) entry.feProc.kill('SIGKILL'); } catch { /* already dead */ }
+      try { if (!proc.killed) proc.kill('SIGKILL'); } catch { /* already dead */ }
     }, 5000);
   }
   procs.delete(name);
 }
 
-export function stopAllCamps() {
+export function stopAllCamps(): void {
   for (const [name] of procs) {
     stopCamp(name);
   }
@@ -201,7 +225,7 @@ export function stopAllCamps() {
   }
 }
 
-export function getProcessInfo(name) {
+export function getProcessInfo(name: string): ProcessInfo | null {
   const entry = procs.get(name);
   if (!entry) return null;
   return {

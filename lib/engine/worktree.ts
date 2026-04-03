@@ -1,27 +1,35 @@
 import { join } from 'node:path';
-import simpleGit from 'simple-git';
-import { getCampsDir } from './state.js';
+import simpleGit, { type SimpleGit } from 'simple-git';
+import { getCampsDir } from './state.ts';
 
-let projectRoot = null;
+let projectRoot: string | null = null;
 
-export function setProjectRoot(root) {
+export interface BranchInfo {
+  name: string;
+  remote: boolean;
+  local: boolean;
+  date: string;
+  category?: 'default' | 'feature' | 'fix' | 'other';
+}
+
+export function setProjectRoot(root: string): void {
   projectRoot = root;
 }
 
-export function getProjectRoot() {
+export function getProjectRoot(): string {
   if (!projectRoot) throw new Error('projectRoot not initialized. Call setProjectRoot() first.');
   return projectRoot;
 }
 
-export function campPath(name) {
+export function campPath(name: string): string {
   return join(getCampsDir(), name);
 }
 
-function git() {
+function git(): SimpleGit {
   return simpleGit(getProjectRoot());
 }
 
-export async function listBranches() {
+export async function listBranches(): Promise<BranchInfo[]> {
   // Best-effort fetch — continue with local refs on network failure
   try { await git().fetch(['--prune']); } catch { /* offline is OK */ }
 
@@ -33,7 +41,7 @@ export async function listBranches() {
     'refs/remotes/origin/',
   ]);
 
-  const map = new Map();
+  const map = new Map<string, BranchInfo>();
   for (const line of raw.trim().split('\n')) {
     if (!line) continue;
     const [shortName, date, fullRef] = line.split('\t');
@@ -42,7 +50,7 @@ export async function listBranches() {
     const clean = shortName.replace(/^origin\//, '').trim();
     if (!clean) continue;
 
-    const entry = map.get(clean) || { name: clean, remote: false, local: false, date };
+    const entry: BranchInfo = map.get(clean) || { name: clean, remote: false, local: false, date };
     if (isRemote) entry.remote = true;
     else entry.local = true;
     if (!entry.date) entry.date = date;
@@ -66,10 +74,10 @@ export async function listBranches() {
   return branches;
 }
 
-export async function addWorktree(name, branch) {
+export async function addWorktree(name: string, branch: string): Promise<void> {
   const path = campPath(name);
   const refs = [`origin/${branch}`, branch];
-  let lastErr;
+  let lastErr: unknown;
   for (const ref of refs) {
     try {
       await git().raw(['worktree', 'add', '--detach', path, ref]);
@@ -81,7 +89,7 @@ export async function addWorktree(name, branch) {
   throw lastErr;
 }
 
-export async function removeWorktree(name) {
+export async function removeWorktree(name: string): Promise<void> {
   const path = campPath(name);
   await git().raw(['worktree', 'remove', '--force', path]);
 }
