@@ -73,7 +73,7 @@ if (command === 'init') {
   --port <N>           대시보드 포트 (기본: 4000)
   --project <path>     프로젝트 경로 (기본: 현재 디렉토리)
 
-자세히: https://github.com/pjeong/sanjang
+자세히: https://github.com/paul-sherpas/sanjang
 `);
 } else {
   // Default: start server
