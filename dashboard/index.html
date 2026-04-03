@@ -133,6 +133,43 @@
     </div>
   </div>
 
+  <!-- Ship Result (shown after successful ship) -->
+  <div class="modal-backdrop" id="ship-result-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>보내기 완료!</h2>
+      <div id="ship-result-content"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="closeShipResultModal()">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conflict Modal -->
+  <div class="modal-backdrop" id="conflict-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>충돌이 발생했어요</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+        팀의 변경사항과 내 변경사항이 같은 부분을 수정해서 충돌이 생겼어요.
+      </p>
+      <div id="conflict-files" style="margin-bottom:16px"></div>
+      <p style="font-size:13px;margin-bottom:16px">어떻게 할까요?</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-primary" onclick="resolveConflict('claude')">
+          Claude에게 맡기기 (추천)
+        </button>
+        <button class="btn btn-ghost" onclick="resolveConflict('ours')">
+          내 것 유지하기
+        </button>
+        <button class="btn btn-ghost" onclick="resolveConflict('theirs')">
+          팀 것으로 덮기
+        </button>
+        <button class="btn btn-ghost" onclick="resolveAbort()" style="color:var(--text-muted)">
+          취소 (원래대로 되돌리기)
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div id="toast-container"></div>
 

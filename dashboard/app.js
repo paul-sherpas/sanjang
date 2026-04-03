@@ -200,6 +200,26 @@ function handleWsMessage(msg) {
       toast(`캠프 "${name}" 초기화 완료`, 'success');
       break;
     }
+
+    case 'playground-pr-created': {
+      if (!name) break;
+      // PR URL arrived from background — update result modal
+      const prContent = document.getElementById('ship-result-content');
+      if (prContent) {
+        prContent.innerHTML = `
+          <p style="margin-bottom:12px">PR이 만들어졌습니다!</p>
+          <a href="${escHtml(data?.prUrl || '')}" target="_blank" class="btn btn-primary"
+             style="display:inline-block;text-decoration:none">
+            PR 보기 →
+          </a>
+          <p style="margin-top:12px;font-size:12px;color:var(--text-muted)">
+            팀원이 확인하고 반영할 거예요.
+          </p>`;
+      }
+      document.getElementById('ship-result-modal').classList.add('open');
+      toast(`PR이 만들어졌습니다!`, 'success');
+      break;
+    }
   }
 }
 
@@ -260,6 +280,16 @@ function renderAll() {
     updateLogPanel(name);
     updateDiagPanel(name);
     refreshChanges(name);
+  }
+
+  // Auto-fetch diagnostics for error-status camps
+  for (const [name, pg] of playgrounds) {
+    if (pg.status === 'error' && !diagnostics.has(name)) {
+      api('GET', `/api/playgrounds/${name}/diagnostics`).then(data => {
+        diagnostics.set(name, data);
+        updateDiagPanel(name);
+      }).catch(() => {});
+    }
   }
 }
 
@@ -334,7 +364,7 @@ function renderCard(pg) {
   </div>` : ''}
 
   ${status === 'error' ? `
-  <div class="card-error-hint">시작에 실패했습니다. 로그를 확인하거나 "처음부터 다시"를 눌러보세요.</div>` : ''}
+  <div class="card-error-hint">걱정 마세요! 아래 안내를 따라하면 됩니다.</div>` : ''}
 
   <div class="card-changes" id="changes-${n}"></div>
 
@@ -421,14 +451,18 @@ function updateDiagPanel(name) {
   panel.classList.remove('hidden');
 
   const rows = items.map((item) => {
-    const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : 'ℹ️';
+    const icon = item.status === 'ok' ? '✅' : item.status === 'error' ? '❌' : 'ℹ️';
+    const guideHtml = item.guide
+      ? `<div class="diag-guide">${escHtml(item.guide)}</div>`
+      : '';
     return `<div class="diag-item">
       <span class="diag-icon">${icon}</span>
-      <span class="diag-text"><strong>${escHtml(item.check ?? '')}</strong>${item.detail ? ' — ' + escHtml(item.detail) : ''}</span>
+      <span class="diag-text"><strong>${escHtml(item.name ?? '')}</strong>${item.detail ? ' — ' + escHtml(item.detail) : ''}</span>
+      ${guideHtml}
     </div>`;
   }).join('');
 
-  panel.innerHTML = `<div class="diag-title">Diagnostics</div>${rows}`;
+  panel.innerHTML = `<div class="diag-title">무슨 일이 일어났나요?</div>${rows}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -947,6 +981,10 @@ window.closeShipModal = function() {
   shipModalName = null;
 };
 
+window.closeShipResultModal = function() {
+  document.getElementById('ship-result-modal').classList.remove('open');
+};
+
 window.shipPg = async function shipPg() {
   if (!shipModalName) return;
   const message = document.getElementById('ship-message').value.trim();
@@ -957,9 +995,17 @@ window.shipPg = async function shipPg() {
   btn.textContent = '보내는 중...';
 
   try {
-    const result = await api('POST', `/api/playgrounds/${shipModalName}/ship`, { message });
+    await api('POST', `/api/playgrounds/${shipModalName}/ship`, { message });
     closeShipModal();
-    toast('커밋 완료! 터미널에서 Claude에게 "PR 만들어줘"라고 말해주세요.', 'success');
+
+    // Show result modal immediately — PR creation happens in background via WebSocket
+    const content = document.getElementById('ship-result-content');
+    content.innerHTML = `
+      <p style="margin-bottom:12px">코드가 올라갔습니다!</p>
+      <p style="font-size:13px;color:var(--text-muted)">
+        PR을 만드는 중입니다... 잠시 후 알림이 옵니다.
+      </p>`;
+    document.getElementById('ship-result-modal').classList.add('open');
   } catch (err) {
     toast(`보내기 실패: ${err.message}`, 'error');
   } finally {
