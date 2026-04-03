@@ -76,7 +76,7 @@ describe('cache — isCacheValid', () => {
     mkdirSync(join(cacheDir, 'frontend', 'node_modules'), { recursive: true });
     writeFileSync(join(cacheDir, 'frontend', 'node_modules', 'test.txt'), 'cached');
     const hash = hashLockfile(join(projectRoot, 'frontend', 'package-lock.json'));
-    writeFileSync(join(cacheDir, 'lockfile.hash'), hash);
+    writeFileSync(join(cacheDir, 'lockfile-frontend.hash'), hash);
 
     const result = isCacheValid(projectRoot, 'frontend');
     assert.equal(result.valid, true);
@@ -106,7 +106,7 @@ describe('cache — applyCacheToWorktree', () => {
     mkdirSync(join(cacheDir, 'frontend', 'node_modules', 'express'), { recursive: true });
     writeFileSync(join(cacheDir, 'frontend', 'node_modules', 'express', 'index.js'), 'module.exports = {}');
     const hash = hashLockfile(join(projectRoot, 'frontend', 'package-lock.json'));
-    writeFileSync(join(cacheDir, 'lockfile.hash'), hash);
+    writeFileSync(join(cacheDir, 'lockfile-frontend.hash'), hash);
   });
   after(() => {
     rmSync(projectRoot, { recursive: true, force: true });
