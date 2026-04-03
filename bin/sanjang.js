@@ -58,6 +58,24 @@ if (command === 'init') {
     }
   }
 
+  // Prebuild dependency cache
+  const { loadConfig } = await import('../lib/config.js');
+  const initConfig = await loadConfig(projectRoot);
+  if (initConfig.setup) {
+    console.log('');
+    console.log('  의존성 캐시를 빌드합니다...');
+    const { buildCache } = await import('../lib/engine/cache.js');
+    const cacheResult = await buildCache(projectRoot, initConfig, (msg) => {
+      console.log(`  ${msg}`);
+    });
+    if (cacheResult.success) {
+      console.log(`  캐시 빌드 완료 ✓ (${(cacheResult.duration / 1000).toFixed(1)}초)`);
+    } else {
+      console.log(`  ⚠️ 캐시 빌드 실패: ${cacheResult.error}`);
+      console.log('  캠프 생성 시 일반 설치를 사용합니다.');
+    }
+  }
+
   // Auto-start server unless --no-start
   const noStart = args.includes('--no-start');
   if (!noStart) {
