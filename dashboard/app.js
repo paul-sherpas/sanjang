@@ -822,6 +822,8 @@ window.createPg = async function createPg() {
 
   const btn = document.getElementById('create-pg-btn');
   btn.disabled = true;
+  btn.textContent = '만드는 중...';
+  toast('캠프를 만들고 있습니다... (의존성 설치 중)', 'info');
   try {
     await api('POST', '/api/playgrounds', { name, branch });
     closeNewModal();
@@ -830,6 +832,7 @@ window.createPg = async function createPg() {
     errEl.textContent = err.message;
   } finally {
     btn.disabled = false;
+    btn.textContent = '생성';
   }
 };
 
@@ -1396,14 +1399,26 @@ window.quickStart = async function quickStart() {
   const description = input.value.trim();
   if (!description) { toast('뭘 하고 싶은지 입력해주세요!', 'error'); return; }
 
+  // 즉시 로딩 상태 표시
+  const btn = input.nextElementSibling;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '만드는 중...';
+  input.disabled = true;
+  toast('캠프를 만들고 있습니다... (의존성 설치 중)', 'info');
+
   try {
     const result = await api('POST', '/api/quick-start', { description });
     input.value = '';
-    toast(`캠프 "${result.name}" 생성됨!`, 'success');
+    toast(`캠프 "${result.name}" 생성 완료!`, 'success');
     await loadPortal();
     renderAll();
   } catch (err) {
     toast(`생성 실패: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+    input.disabled = false;
   }
 };
 
