@@ -1,13 +1,13 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { findLockfile, hashLockfile, isCacheValid, buildCache, applyCacheToWorktree, getCacheDir } from '../lib/engine/cache.js';
 
 describe('cache — findLockfile', () => {
-  let dir;
+  let dir: string;
   before(() => { dir = mkdtempSync(join(tmpdir(), 'sanjang-cache-')); });
   after(() => { rmSync(dir, { recursive: true, force: true }); });
 
@@ -18,14 +18,14 @@ describe('cache — findLockfile', () => {
   it('finds package-lock.json', () => {
     writeFileSync(join(dir, 'package-lock.json'), '{}');
     const result = findLockfile(dir);
-    assert.equal(result.name, 'package-lock.json');
+    assert.equal(result?.name, 'package-lock.json');
   });
 
   it('finds yarn.lock', () => {
     const d = mkdtempSync(join(tmpdir(), 'sanjang-yarn-'));
     writeFileSync(join(d, 'yarn.lock'), '# yarn');
     const result = findLockfile(d);
-    assert.equal(result.name, 'yarn.lock');
+    assert.equal(result?.name, 'yarn.lock');
     rmSync(d, { recursive: true, force: true });
   });
 });
@@ -38,7 +38,7 @@ describe('cache — hashLockfile', () => {
     const h1 = hashLockfile(f);
     const h2 = hashLockfile(f);
     assert.equal(h1, h2);
-    assert.equal(h1.length, 64); // SHA-256 hex
+    assert.equal(h1.length, 64);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -55,10 +55,9 @@ describe('cache — hashLockfile', () => {
 });
 
 describe('cache — isCacheValid', () => {
-  let projectRoot;
+  let projectRoot: string;
   before(() => {
     projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-valid-'));
-    // Create project structure: projectRoot/frontend/package-lock.json
     mkdirSync(join(projectRoot, 'frontend'), { recursive: true });
     writeFileSync(join(projectRoot, 'frontend', 'package-lock.json'), '{"v":1}');
   });
@@ -71,7 +70,6 @@ describe('cache — isCacheValid', () => {
   });
 
   it('returns valid when cache matches lockfile', () => {
-    // Create cache
     const cacheDir = getCacheDir(projectRoot);
     mkdirSync(join(cacheDir, 'frontend', 'node_modules'), { recursive: true });
     writeFileSync(join(cacheDir, 'frontend', 'node_modules', 'test.txt'), 'cached');
@@ -83,7 +81,6 @@ describe('cache — isCacheValid', () => {
   });
 
   it('returns invalid when lockfile changes', () => {
-    // Modify lockfile
     writeFileSync(join(projectRoot, 'frontend', 'package-lock.json'), '{"v":2}');
     const result = isCacheValid(projectRoot, 'frontend');
     assert.equal(result.valid, false);
@@ -92,16 +89,15 @@ describe('cache — isCacheValid', () => {
 });
 
 describe('cache — applyCacheToWorktree', () => {
-  let projectRoot, wtPath;
+  let projectRoot: string;
+  let wtPath: string;
   before(() => {
     projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-apply-'));
     wtPath = mkdtempSync(join(tmpdir(), 'sanjang-wt-'));
 
-    // Project with lockfile
     mkdirSync(join(projectRoot, 'frontend'), { recursive: true });
     writeFileSync(join(projectRoot, 'frontend', 'package-lock.json'), '{"v":1}');
 
-    // Valid cache
     const cacheDir = getCacheDir(projectRoot);
     mkdirSync(join(cacheDir, 'frontend', 'node_modules', 'express'), { recursive: true });
     writeFileSync(join(cacheDir, 'frontend', 'node_modules', 'express', 'index.js'), 'module.exports = {}');
@@ -113,10 +109,10 @@ describe('cache — applyCacheToWorktree', () => {
     rmSync(wtPath, { recursive: true, force: true });
   });
 
-  it('clones cache to worktree via cp -Rc', () => {
+  it('clones cache to worktree via fs.cpSync', () => {
     const result = applyCacheToWorktree(projectRoot, wtPath, 'frontend');
     assert.equal(result.applied, true);
-    assert.ok(result.duration >= 0);
+    assert.ok(typeof result.duration === 'number' && result.duration >= 0);
     assert.ok(existsSync(join(wtPath, 'frontend', 'node_modules', 'express', 'index.js')));
   });
 
@@ -133,14 +129,13 @@ describe('cache — applyCacheToWorktree', () => {
 describe('cache — buildCache', () => {
   it('caches existing node_modules without running setup', async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'sanjang-build-'));
-    // Simulate existing project with node_modules
     mkdirSync(join(projectRoot, 'node_modules', 'foo'), { recursive: true });
     writeFileSync(join(projectRoot, 'node_modules', 'foo', 'index.js'), 'ok');
     writeFileSync(join(projectRoot, 'package-lock.json'), '{"lock":true}');
 
     const config = { dev: { cwd: '.' }, setup: 'npm install' };
-    const logs = [];
-    const result = await buildCache(projectRoot, config, (msg) => logs.push(msg));
+    const logs: string[] = [];
+    const result = await buildCache(projectRoot, config, (msg: string) => logs.push(msg));
 
     assert.equal(result.success, true);
     assert.ok(existsSync(join(getCacheDir(projectRoot), 'node_modules', 'foo', 'index.js')));
@@ -154,7 +149,7 @@ describe('cache — buildCache', () => {
     const config = { dev: { cwd: '.' }, setup: 'npm install' };
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
-    assert.ok(result.error.includes('lockfile'));
+    assert.ok(result.error?.includes('lockfile'));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
@@ -164,7 +159,7 @@ describe('cache — buildCache', () => {
     const config = { dev: { cwd: '.' }, setup: null };
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
-    assert.ok(result.error.includes('no setup command'));
+    assert.ok(result.error?.includes('no setup command'));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
@@ -174,7 +169,7 @@ describe('cache — buildCache', () => {
     const config = { dev: { cwd: '.' }, setup: 'exit 1' };
     const result = await buildCache(projectRoot, config);
     assert.equal(result.success, false);
-    assert.ok(result.error.includes('setup failed'));
+    assert.ok(result.error?.includes('setup failed'));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
