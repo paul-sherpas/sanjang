@@ -1,23 +1,24 @@
 import { execSync } from 'node:child_process';
+import type { Camp, PortsConfig, PortAllocation, PortStatus } from '../types.js';
 
-let portConfig = {
+let portConfig: PortsConfig = {
   fe: { base: 3000, slots: 8 },
   be: { base: 8000, slots: 8 },
 };
 
-export function setPortConfig(config) {
+export function setPortConfig(config: Partial<PortsConfig>): void {
   if (config?.fe) portConfig.fe = config.fe;
   if (config?.be) portConfig.be = config.be;
 }
 
-export function portsForSlot(slot) {
+export function portsForSlot(slot: number): { fePort: number; bePort: number } {
   return {
     fePort: portConfig.fe.base + slot,
     bePort: portConfig.be.base + slot,
   };
 }
 
-function isPortBusy(port) {
+function isPortBusy(port: number): boolean {
   try {
     const out = execSync(`lsof -i :${port} -t 2>/dev/null`, { encoding: 'utf8' }).trim();
     return out.length > 0;
@@ -26,8 +27,8 @@ function isPortBusy(port) {
   }
 }
 
-export function scanPorts() {
-  const status = [];
+export function scanPorts(): PortStatus[] {
+  const status: PortStatus[] = [];
   const maxSlots = Math.max(portConfig.fe.slots, portConfig.be.slots);
   for (let slot = 0; slot < maxSlots; slot++) {
     const { fePort, bePort } = portsForSlot(slot);
@@ -40,7 +41,7 @@ export function scanPorts() {
   return status;
 }
 
-export function allocate(existingCamps) {
+export function allocate(existingCamps: Pick<Camp, 'slot'>[]): PortAllocation {
   const usedSlots = new Set(existingCamps.map(p => p.slot));
   const maxSlots = portConfig.fe.slots;
 
@@ -55,4 +56,4 @@ export function allocate(existingCamps) {
   throw new Error('사용 가능한 포트가 없습니다. 다른 프로그램이 포트를 점유하고 있거나, 캠프를 정리해주세요.');
 }
 
-export function release(_name) {}
+export function release(_name: string): void {}
