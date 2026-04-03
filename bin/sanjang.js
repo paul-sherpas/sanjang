@@ -10,6 +10,7 @@ const command = args[0];
 // Parse options
 let projectRoot = process.cwd();
 let port = 4000;
+let force = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--project' && args[i + 1]) {
@@ -19,6 +20,9 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === '--port' && args[i + 1]) {
     port = parseInt(args[i + 1]);
     i++;
+  }
+  if (args[i] === '--force') {
+    force = true;
   }
 }
 
@@ -36,9 +40,40 @@ try {
 }
 
 if (command === 'init') {
-  // Generate config
-  const { generateConfig } = await import('../lib/config.js');
-  const result = generateConfig(projectRoot);
+  const { generateConfig, detectApps } = await import('../lib/config.js');
+
+  // Detect apps in subdirectories
+  const apps = detectApps(projectRoot);
+  let appDir = undefined;
+
+  if (apps.length >= 2) {
+    // Multi-app interview
+    console.log('');
+    console.log('⛰ 여러 앱이 감지되었습니다:');
+    for (let i = 0; i < apps.length; i++) {
+      console.log(`  ${i + 1}) ${apps[i].dir}/\t(${apps[i].framework})`);
+    }
+    console.log('');
+
+    const { createInterface } = await import('node:readline');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise((resolve) => {
+      rl.question('  어떤 앱을 띄울까요? [번호]: ', resolve);
+    });
+    rl.close();
+
+    const idx = parseInt(answer) - 1;
+    if (idx < 0 || idx >= apps.length || isNaN(idx)) {
+      console.error('⛰ 잘못된 선택입니다.');
+      process.exit(1);
+    }
+    appDir = apps[idx].dir;
+    console.log(`  → ${appDir}/ (${apps[idx].framework}) 선택됨`);
+  } else if (apps.length === 1) {
+    appDir = apps[0].dir;
+  }
+
+  const result = generateConfig(projectRoot, { appDir, force });
 
   if (result.created) {
     console.log(`⛰ ${result.message}`);
@@ -99,6 +134,7 @@ if (command === 'init') {
 옵션:
   --port <N>           대시보드 포트 (기본: 4000)
   --project <path>     프로젝트 경로 (기본: 현재 디렉토리)
+  --force              기존 설정을 덮어쓰고 다시 생성
 
 자세히: https://github.com/paul-sherpas/sanjang
 `);
