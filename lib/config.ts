@@ -252,7 +252,7 @@ export function generateConfig(
 
   if (detected.setup) {
     lines.push(`  // Install dependencies after creating a camp`);
-    lines.push(`  setup: '${detected.setup}',`);
+    lines.push(`  setup: ${JSON.stringify(detected.setup)},`);
     lines.push("");
   }
 
