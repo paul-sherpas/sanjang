@@ -18,6 +18,12 @@ const diagnostics = new Map();
 /** @type {Map<string, { running: boolean, prompt: string }>} task states */
 const taskStates = new Map();
 
+/** @type {string|null} name of camp in workspace view, or null for list view */
+let currentWorkspace = null;
+
+/** @type {number|null} polling interval for workspace changes */
+let wsPollingInterval = null;
+
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
@@ -113,6 +119,7 @@ function handleWsMessage(msg) {
       lines.push({ text: data, source: source ?? 'be' });
       if (lines.length > 50) lines.splice(0, lines.length - 50);
       updateLogPanel(name);
+      if (currentWorkspace === name) updateWorkspaceLog(name);
       break;
     }
 
@@ -165,6 +172,7 @@ function handleWsMessage(msg) {
       taskLines.push({ text: data?.text ?? '', source: 'task' });
       if (taskLines.length > 100) taskLines.splice(0, taskLines.length - 100);
       updateLogPanel(name);
+      if (currentWorkspace === name) updateWorkspaceLog(name);
       // auto-open log panel when task output comes
       const logToggle = document.querySelector(`[data-name="${name}"] .log-toggle`);
       if (logToggle && !logToggle.classList.contains('open')) logToggle.click();
@@ -355,7 +363,7 @@ function renderCard(pg) {
         ${zzzHtml}
       </div>
       <div class="card-header-text">
-        <span class="card-name">${n}</span>
+        <span class="card-name" onclick="event.stopPropagation();enterWorkspace('${n}')" style="cursor:pointer;text-decoration:underline">${n}</span>
         <span class="card-branch">${b}</span>
       </div>
     </div>
@@ -1104,6 +1112,212 @@ window.cancelTask = async function cancelTask(name) {
     await api('POST', `/api/playgrounds/${name}/task/cancel`);
   } catch (err) {
     toast(`취소 실패: ${err.message}`, 'error');
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Workspace View — SPA routing (list ↔ workspace)
+// ---------------------------------------------------------------------------
+
+function enterWorkspace(name) {
+  currentWorkspace = name;
+  document.getElementById('grid').classList.add('hidden');
+  document.getElementById('empty-state').classList.remove('visible');
+  document.querySelector('header').classList.add('hidden');
+  const ws = document.getElementById('workspace');
+  ws.classList.remove('hidden');
+
+  // Call enter API
+  api('POST', `/api/playgrounds/${name}/enter`).then(data => {
+    renderWorkspace(data);
+  }).catch(err => {
+    toast(`캠프 진입 실패: ${err.message}`, 'error');
+    exitWorkspace();
+  });
+}
+
+function exitWorkspace() {
+  currentWorkspace = null;
+  if (wsPollingInterval) { clearInterval(wsPollingInterval); wsPollingInterval = null; }
+  document.getElementById('workspace').classList.add('hidden');
+  document.getElementById('grid').classList.remove('hidden');
+  document.querySelector('header').classList.remove('hidden');
+  renderAll();
+}
+window.exitWorkspace = exitWorkspace;
+
+function renderWorkspace(data) {
+  const { camp, changes, terminal, previewUrl } = data;
+
+  // Header
+  document.getElementById('ws-title').textContent = `캠프: ${camp.name}`;
+  const statusEl = document.getElementById('ws-status');
+  statusEl.textContent = camp.status;
+  statusEl.className = `workspace-status badge badge-${camp.status}`;
+
+  // Changes
+  const changesEl = document.getElementById('ws-changes');
+  if (changes.count === 0) {
+    changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
+  } else {
+    changesEl.innerHTML = changes.files.map(f =>
+      `<div class="ws-file-item">
+        <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
+        <span>${escHtml(f.path)}</span>
+      </div>`
+    ).join('');
+  }
+
+  // Actions
+  const actionsEl = document.getElementById('ws-actions');
+  if (changes.actions?.length) {
+    actionsEl.innerHTML = changes.actions.map(a =>
+      `<div class="ws-action-item">• ${escHtml(a.description)}</div>`
+    ).join('');
+  } else {
+    actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 없음</span>';
+  }
+
+  // Preview
+  const previewEl = document.getElementById('ws-preview');
+  if (previewUrl) {
+    previewEl.innerHTML = `
+      <iframe src="${escHtml(previewUrl)}" class="ws-preview-iframe"></iframe>
+      <div class="ws-preview-fallback" style="display:none">
+        <a href="${escHtml(previewUrl)}" target="_blank" class="btn btn-primary">
+          새 탭에서 열기 → ${escHtml(previewUrl)}
+        </a>
+      </div>`;
+    // iframe load event — detect X-Frame-Options block via cross-origin access
+    const iframe = previewEl.querySelector('iframe');
+    iframe.addEventListener('load', () => {
+      try { iframe.contentDocument; } catch {
+        iframe.style.display = 'none';
+        previewEl.querySelector('.ws-preview-fallback').style.display = 'flex';
+      }
+    });
+  } else {
+    previewEl.innerHTML = `<span style="color:var(--text-muted);font-size:13px">
+      서버가 실행 중이 아닙니다. 먼저 시작해주세요.
+    </span>`;
+  }
+
+  // Terminal button label
+  const termBtn = document.getElementById('ws-terminal-btn');
+  if (terminal && terminal.opened) {
+    termBtn.textContent = '💻 Warp에서 열림 ✓';
+    setTimeout(() => { termBtn.textContent = '💻 터미널 열기'; }, 3000);
+  } else if (terminal && !terminal.terminal) {
+    termBtn.textContent = '💻 경로 복사';
+  }
+
+  // Log — show existing logs
+  updateWorkspaceLog(camp.name);
+
+  // Start polling changes
+  startWorkspacePolling(camp.name);
+}
+
+function startWorkspacePolling(name) {
+  if (wsPollingInterval) clearInterval(wsPollingInterval);
+  wsPollingInterval = setInterval(async () => {
+    if (currentWorkspace !== name) {
+      clearInterval(wsPollingInterval);
+      wsPollingInterval = null;
+      return;
+    }
+    try {
+      const data = await api('GET', `/api/playgrounds/${name}/changes`);
+      const changesEl = document.getElementById('ws-changes');
+      if (!changesEl) return;
+      if (data.count === 0) {
+        changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
+      } else {
+        changesEl.innerHTML = data.files.map(f =>
+          `<div class="ws-file-item">
+            <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
+            <span>${escHtml(f.path)}</span>
+          </div>`
+        ).join('');
+      }
+      // Update actions
+      const actionsEl = document.getElementById('ws-actions');
+      if (actionsEl && data.actions?.length) {
+        actionsEl.innerHTML = data.actions.map(a =>
+          `<div class="ws-action-item">• ${escHtml(a.description)}</div>`
+        ).join('');
+      }
+    } catch { /* ignore */ }
+  }, 3000);
+}
+
+function updateWorkspaceLog(name) {
+  const panel = document.getElementById('ws-log');
+  if (!panel) return;
+  const pre = panel.querySelector('pre');
+  if (!pre) return;
+  const lines = logs.get(name) ?? [];
+  pre.innerHTML = lines.map(({ text, source }) => {
+    const cls = source === 'frontend' ? 'log-line-fe'
+      : source === 'task' ? 'log-line-task'
+      : 'log-line-err';
+    return `<span class="${cls}">${escHtml(text)}</span>`;
+  }).join('\n');
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// Workspace action handlers — reuse existing functions
+window.wsSubmitTask = function() {
+  if (!currentWorkspace) return;
+  const input = document.getElementById('ws-task-input');
+  const prompt = input.value.trim();
+  if (!prompt) { toast('뭘 해줄지 입력해주세요!', 'error'); return; }
+  api('POST', `/api/playgrounds/${currentWorkspace}/task`, { prompt })
+    .then(() => { input.value = ''; })
+    .catch(err => toast(`일 시키기 실패: ${err.message}`, 'error'));
+};
+
+window.wsShip = function() {
+  if (!currentWorkspace) return;
+  openShipModal(currentWorkspace);
+};
+
+window.wsSnap = function() {
+  if (!currentWorkspace) return;
+  openSnapModal(currentWorkspace);
+};
+
+window.wsSync = function() {
+  if (!currentWorkspace) return;
+  syncPg(currentWorkspace);
+};
+
+window.wsReset = function() {
+  if (!currentWorkspace) return;
+  resetPg(currentWorkspace);
+};
+
+window.wsOpenTerminal = async function() {
+  if (!currentWorkspace) return;
+  try {
+    const result = await api('POST', `/api/playgrounds/${currentWorkspace}/open-terminal`);
+    if (result.opened) {
+      toast('Warp에서 열렸습니다', 'success');
+    } else {
+      // Fallback: copy path
+      const path = result.path;
+      await navigator.clipboard.writeText(`cd ${path}`).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = `cd ${path}`;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      });
+      toast('경로가 복사되었습니다. 터미널에 붙여넣기 하세요.', 'success');
+    }
+  } catch (err) {
+    toast(`터미널 열기 실패: ${err.message}`, 'error');
   }
 };
 

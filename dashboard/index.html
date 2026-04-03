@@ -24,6 +24,52 @@
   <!-- Card grid -->
   <div class="grid" id="grid"></div>
 
+  <!-- Workspace View (full-screen camp) -->
+  <div id="workspace" class="workspace hidden">
+    <div class="workspace-header">
+      <button class="btn btn-ghost btn-sm" onclick="exitWorkspace()">← 캠프 목록</button>
+      <span class="workspace-title" id="ws-title"></span>
+      <span class="workspace-status" id="ws-status"></span>
+    </div>
+    <div class="workspace-body">
+      <div class="workspace-left">
+        <div class="workspace-section">
+          <h3>📁 변경사항</h3>
+          <div id="ws-changes"></div>
+        </div>
+        <div class="workspace-section">
+          <h3>📋 작업 기록</h3>
+          <div id="ws-actions"></div>
+        </div>
+        <div class="workspace-section">
+          <h3>📜 로그</h3>
+          <div class="ws-log-panel" id="ws-log"><pre></pre></div>
+        </div>
+      </div>
+      <div class="workspace-right">
+        <div class="workspace-section workspace-preview-section">
+          <h3>🌐 프리뷰</h3>
+          <div id="ws-preview"></div>
+        </div>
+      </div>
+    </div>
+    <div class="workspace-actions">
+      <div class="workspace-task-row">
+        <input class="form-input" id="ws-task-input" type="text"
+          placeholder="뭐 해줄까?" autocomplete="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter')wsSubmitTask()">
+        <button class="btn btn-primary btn-sm" onclick="wsSubmitTask()">시키기</button>
+      </div>
+      <div class="workspace-btn-row">
+        <button class="btn btn-accent" id="ws-ship-btn" onclick="wsShip()">팀에 보내기</button>
+        <button class="btn btn-sub" onclick="wsSnap()">📸 스냅샷</button>
+        <button class="btn btn-sub" onclick="wsSync()">⬇️ 최신</button>
+        <button class="btn btn-sub" onclick="wsReset()">🔄 처음부터</button>
+        <button class="btn btn-sub" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널 열기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Camp Modal -->
   <div class="modal-backdrop" id="new-pg-modal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="new-pg-modal-title">
