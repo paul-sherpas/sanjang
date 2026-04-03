@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>산장</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>산장</h1>
+    <button class="btn btn-primary" onclick="openNewModal()">+ 새 캠프</button>
+  </header>
+
+  <!-- Empty state -->
+  <div id="empty-state">
+    <span class="empty-icon">🏔</span>
+    <p>아직 캠프가 없습니다</p>
+    <span class="empty-hint"><strong>+ 새 캠프</strong>를 눌러 시작하세요</span>
+  </div>
+
+  <!-- Card grid -->
+  <div class="grid" id="grid"></div>
+
+  <!-- New Camp Modal -->
+  <div class="modal-backdrop" id="new-pg-modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="new-pg-modal-title">
+      <h2 id="new-pg-modal-title">새 캠프</h2>
+
+      <div class="form-group">
+        <label class="form-label" for="new-pg-name">이름</label>
+        <input
+          class="form-input"
+          id="new-pg-name"
+          type="text"
+          placeholder="예: my-feature"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <span class="form-hint">소문자, 숫자, 하이픈만 사용 가능</span>
+        <span id="new-pg-name-error" style="color: var(--status-error-fg); font-size: 12px;"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="new-pg-branch">브랜치</label>
+        <div class="branch-picker" id="branch-picker">
+          <input
+            class="form-input"
+            id="new-pg-branch"
+            type="text"
+            placeholder="브랜치 이름 검색..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <div class="branch-dropdown" id="branch-dropdown"></div>
+        </div>
+        <span class="form-hint" id="branch-count"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeNewModal()">취소</button>
+        <button class="btn btn-primary" id="create-pg-btn" onclick="createPg()">생성</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Snapshot Modal -->
+  <div class="modal-backdrop" id="snap-modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="snap-modal-title">
+      <h2 id="snap-modal-title">스냅샷</h2>
+
+      <div class="form-group">
+        <label class="form-label" for="snap-label-input">새 스냅샷 저장</label>
+        <div class="snap-save-row">
+          <input
+            class="form-input"
+            id="snap-label-input"
+            type="text"
+            placeholder="이름 (선택사항)"
+            autocomplete="off"
+          >
+          <button class="btn btn-primary btn-sm" onclick="saveSnap()">저장</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <span class="form-label">저장된 스냅샷</span>
+        <div class="snap-list" id="snap-list">
+          <div class="snap-empty">스냅샷이 없습니다</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeSnapModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Changes Modal -->
+  <div class="modal-backdrop" id="changes-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2 id="changes-modal-title">변경 내역</h2>
+      <div class="changes-file-list" id="changes-file-list"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeChangesModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ship Modal -->
+  <div class="modal-backdrop" id="ship-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>팀에 보내기</h2>
+      <p id="ship-file-count" style="font-size:13px;color:var(--text-muted);margin-bottom:12px"></p>
+
+      <div class="form-group">
+        <label class="form-label" for="ship-message">뭘 바꿨나요? (한 줄로)</label>
+        <input
+          class="form-input"
+          id="ship-message"
+          type="text"
+          placeholder="예: 대시보드 타이틀을 스페인어로 변경"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeShipModal()">취소</button>
+        <button class="btn btn-primary" id="ship-btn" onclick="shipPg()">보내기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
