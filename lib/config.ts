@@ -144,10 +144,10 @@ export function detectProject(projectRoot: string): DetectedProject {
 
   // Monorepo detection
   if (has("turbo.json")) {
-    const turbo = readJson("turbo.json");
+    const actualPort = detectTurboPort(projectRoot) || 3000;
     return {
       framework: "Turborepo",
-      dev: { command: "npx turbo run dev", port: 3000, portFlag: null, cwd: ".", env: {} },
+      dev: { command: "npx turbo run dev", port: actualPort, portFlag: null, cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
       _note: "Turborepo detected. You may need to adjust the dev command to filter a specific app.",
@@ -198,6 +198,31 @@ export function detectApps(projectRoot: string): DetectedApp[] {
   }
 
   return apps.sort((a, b) => a.dir.localeCompare(b.dir));
+}
+
+function detectTurboPort(root: string): number | null {
+  // Scan apps/*/package.json and packages/*/package.json for --port in dev scripts
+  const appDirs = ["apps", "packages"];
+  for (const dir of appDirs) {
+    const base = join(root, dir);
+    if (!existsSync(base)) continue;
+    let entries;
+    try { entries = readdirSync(base, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const pkgPath = join(base, entry.name, "package.json");
+      if (!existsSync(pkgPath)) continue;
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>;
+        const scripts = pkg.scripts as Record<string, string> | undefined;
+        const devScript = scripts?.dev;
+        if (!devScript) continue;
+        const portMatch = devScript.match(/--port\s+(\d+)/);
+        if (portMatch?.[1]) return parseInt(portMatch[1], 10);
+      } catch { continue; }
+    }
+  }
+  return null;
 }
 
 function detectPackageManager(root: string): string {
