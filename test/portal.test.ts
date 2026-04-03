@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { slugify } from '../lib/engine/naming.js';
+import { slugify } from '../lib/engine/naming.ts';
 
 describe('portal', () => {
   it('slugify converts Korean to kebab-case', () => {

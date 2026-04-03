@@ -1,5 +1,5 @@
 // Korean → romanized mappings for common dev terms
-const KOREAN_MAP = {
+const KOREAN_MAP: Record<string, string> = {
   '로그인': 'login', '버튼': 'button', '페이지': 'page', '추가': 'add',
   '수정': 'fix', '삭제': 'delete', '변경': 'change', '개선': 'improve',
   '색상': 'color', '대시보드': 'dashboard', '설정': 'settings',
@@ -16,8 +16,8 @@ const KOREAN_MAP = {
  * Convert a task description (Korean or English) to a kebab-case branch-safe slug.
  * Max 50 chars.
  */
-export function slugify(text) {
-  let result = text.toLowerCase();
+export function slugify(text: string): string {
+  let result: string = text.toLowerCase();
 
   // Replace known Korean words with English
   for (const [ko, en] of Object.entries(KOREAN_MAP)) {
