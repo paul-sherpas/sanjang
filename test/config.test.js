@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { detectProject, loadConfig, generateConfig } from '../lib/config.js';
+import { detectProject, loadConfig, generateConfig, detectApps } from '../lib/config.js';
 
 describe('config — detectProject', () => {
   it('detects Next.js', () => {
@@ -144,5 +144,78 @@ describe('config — generateConfig', () => {
     const result = generateConfig(genDir);
     assert.equal(result.created, false);
     rmSync(genDir, { recursive: true, force: true });
+  });
+});
+
+describe('config — detectApps', () => {
+  it('returns empty array for empty directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-apps-'));
+    const apps = detectApps(dir);
+    assert.deepEqual(apps, []);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('detects multiple apps in monorepo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-apps-'));
+    mkdirSync(join(dir, 'frontend'));
+    writeFileSync(join(dir, 'frontend', 'shadow-cljs.edn'), '{}');
+    writeFileSync(join(dir, 'frontend', 'package.json'), '{}');
+    mkdirSync(join(dir, 'new-frontend'));
+    writeFileSync(join(dir, 'new-frontend', 'turbo.json'), '{}');
+    writeFileSync(join(dir, 'new-frontend', 'package.json'), '{}');
+    mkdirSync(join(dir, 'backend'));
+    writeFileSync(join(dir, 'backend', 'package.json'), '{"scripts":{"dev":"node server.js"}}');
+
+    const apps = detectApps(dir);
+    assert.equal(apps.length, 3);
+    const names = apps.map(a => a.dir).sort();
+    assert.deepEqual(names, ['backend', 'frontend', 'new-frontend']);
+    const fe = apps.find(a => a.dir === 'frontend');
+    assert.equal(fe.framework, 'shadow-cljs');
+    const newFe = apps.find(a => a.dir === 'new-frontend');
+    assert.equal(newFe.framework, 'Turborepo');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns single app without root', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-apps-'));
+    mkdirSync(join(dir, 'app'));
+    writeFileSync(join(dir, 'app', 'next.config.js'), '');
+    writeFileSync(join(dir, 'app', 'package.json'), '{}');
+    const apps = detectApps(dir);
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0].dir, 'app');
+    assert.equal(apps[0].framework, 'Next.js');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('ignores node_modules and dot directories', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-apps-'));
+    mkdirSync(join(dir, 'node_modules'));
+    writeFileSync(join(dir, 'node_modules', 'package.json'), '{}');
+    mkdirSync(join(dir, '.hidden'));
+    writeFileSync(join(dir, '.hidden', 'package.json'), '{}');
+    mkdirSync(join(dir, 'app'));
+    writeFileSync(join(dir, 'app', 'vite.config.js'), '');
+    writeFileSync(join(dir, 'app', 'package.json'), '{}');
+
+    const apps = detectApps(dir);
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0].dir, 'app');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('skips subdirs with only package.json and no scripts.dev', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sanjang-apps-'));
+    mkdirSync(join(dir, 'docs'));
+    writeFileSync(join(dir, 'docs', 'package.json'), '{"name":"docs"}');
+    mkdirSync(join(dir, 'app'));
+    writeFileSync(join(dir, 'app', 'next.config.js'), '');
+    writeFileSync(join(dir, 'app', 'package.json'), '{}');
+
+    const apps = detectApps(dir);
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0].dir, 'app');
+    rmSync(dir, { recursive: true, force: true });
   });
 });
