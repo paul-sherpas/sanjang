@@ -188,9 +188,26 @@ export default {
 
 ---
 
+## 개발
+
+TypeScript로 작성되었습니다. 빌드 스텝 없이 Node.js의 `--experimental-transform-types`로 직접 실행합니다.
+
+```bash
+# 테스트
+npm test
+
+# 타입 체크
+npm run typecheck
+
+# 린트
+npm run lint
+```
+
+---
+
 ## 요구사항
 
-- Node.js 20+
+- Node.js 22+ (`--experimental-transform-types` 지원)
 - Git 2.20+ (worktree 지원)
 - (선택) Claude Code — "일 시키기" 기능용
 

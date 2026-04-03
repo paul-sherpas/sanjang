@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0] - 2026-04-04
+
+### Changed
+
+- **TypeScript 전환**: 전체 코드베이스를 JavaScript에서 TypeScript로 마이그레이션. strict mode + noUncheckedIndexedAccess 적용. `any` 타입 제로.
+- **lib/types.ts 중앙 타입**: Camp, SanjangConfig, CacheResult, PortAllocation 등 18개 인터페이스를 단일 파일로 관리
+- **Node --experimental-transform-types**: 빌드 스텝 없이 .ts 파일 직접 실행
+- **biome 린터**: ESLint 대신 biome으로 코드 품질 관리
+
+### Added
+
+- **GitHub Actions CI**: Node 22/23 매트릭스로 테스트 + 타입체크 자동화
+- **120+ 테스트**: Phase 1 버그픽스 테스트 + TS 마이그레이션 검증 테스트 추가
+
+### Fixed
+
+- **캐시 해시 분리**: setupCwd별 독립 해시 파일로 멀티앱 캐시 충돌 방지
+- **reset 핸들러**: stale config 참조 대신 매번 fresh config 로드
+- **에러 메시지 개선**: 캐시 실패, 설치 실패, 디스크 부족 등 구체적 안내
+
 ## [0.2.0] - 2026-04-04
 
 ### Added
