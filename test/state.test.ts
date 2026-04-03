@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { setCampsDir, getAll, getOne, upsert, remove } from '../lib/engine/state.js';
 
 describe('state', () => {
-  let tmp;
+  let tmp: string;
 
   before(() => {
     tmp = mkdtempSync(join(tmpdir(), 'sanjang-test-'));
@@ -23,15 +23,15 @@ describe('state', () => {
   });
 
   it('upserts and retrieves a record', () => {
-    upsert({ name: 'test-camp', branch: 'main', fePort: 3001, status: 'stopped' });
+    upsert({ name: 'test-camp', branch: 'main', slot: 1, fePort: 3001, bePort: 4001, status: 'stopped' });
     const record = getOne('test-camp');
-    assert.equal(record.name, 'test-camp');
-    assert.equal(record.branch, 'main');
+    assert.equal(record?.name, 'test-camp');
+    assert.equal(record?.branch, 'main');
   });
 
   it('updates existing record', () => {
-    upsert({ name: 'test-camp', branch: 'main', fePort: 3001, status: 'running' });
-    assert.equal(getOne('test-camp').status, 'running');
+    upsert({ name: 'test-camp', branch: 'main', slot: 1, fePort: 3001, bePort: 4001, status: 'running' });
+    assert.equal(getOne('test-camp')?.status, 'running');
     assert.equal(getAll().length, 1);
   });
 

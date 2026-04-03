@@ -1,26 +1,27 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Camp } from '../types.js';
 
-let campsDir = null;
+let campsDir: string | null = null;
 
-export function setCampsDir(dir) {
+export function setCampsDir(dir: string): void {
   campsDir = dir;
 }
 
-export function getCampsDir() {
+export function getCampsDir(): string {
   if (!campsDir) throw new Error('campsDir not initialized. Call setCampsDir() first.');
   return campsDir;
 }
 
-function stateFile() {
+function stateFile(): string {
   return join(getCampsDir(), 'state.json');
 }
 
-function ensureDir() {
+function ensureDir(): void {
   mkdirSync(getCampsDir(), { recursive: true });
 }
 
-function read() {
+function read(): Camp[] {
   const f = stateFile();
   if (!existsSync(f)) return [];
   try {
@@ -30,7 +31,7 @@ function read() {
   }
 }
 
-function write(records) {
+function write(records: Camp[]): void {
   ensureDir();
   // Atomic write: write to temp file then rename to prevent corruption
   const tmp = stateFile() + '.tmp';
@@ -38,15 +39,15 @@ function write(records) {
   renameSync(tmp, stateFile());
 }
 
-export function getAll() {
+export function getAll(): Camp[] {
   return read();
 }
 
-export function getOne(name) {
+export function getOne(name: string): Camp | null {
   return read().find((r) => r.name === name) ?? null;
 }
 
-export function upsert(record) {
+export function upsert(record: Camp): void {
   const records = read();
   const idx = records.findIndex((r) => r.name === record.name);
   if (idx === -1) records.push(record);
@@ -54,6 +55,6 @@ export function upsert(record) {
   write(records);
 }
 
-export function remove(name) {
+export function remove(name: string): void {
   write(read().filter((r) => r.name !== name));
 }
