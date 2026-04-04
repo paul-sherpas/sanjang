@@ -17,6 +17,7 @@ import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./
 import { listSnapshots, restoreSnapshot, saveSnapshot } from "./engine/snapshot.ts";
 import { getAll, getOne, remove, setCampsDir, upsert } from "./engine/state.ts";
 import { detectWarp, openWarpTab } from "./engine/warp.ts";
+import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
 import {
   addWorktree,
   campPath,
@@ -356,10 +357,47 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         broadcast({ type: "playground-status", name, data: { status: "running", url } });
       } catch (err) {
         const current = getOne(name) ?? pg;
+        const processInfo = getProcessInfo(name) ?? { feLogs: [], feExitCode: null };
+
+        // Self-heal: try to auto-fix before giving up
+        const healActions = diagnoseFromLogs(processInfo.feLogs);
+        const autoFixable = healActions.filter(a => a.auto);
+
+        if (autoFixable.length > 0) {
+          broadcast({ type: "log", name, source: "sanjang", data: "문제를 발견했습니다. 자동으로 고치는 중..." });
+
+          const freshConfig = await loadConfig(projectRoot);
+          const wtPath = campPath(name);
+          let healed = false;
+
+          for (const action of autoFixable) {
+            broadcast({ type: "log", name, source: "sanjang", data: `  → ${action.message}` });
+            const result = executeHeal(action, wtPath, projectRoot, freshConfig.setup, freshConfig.copyFiles);
+            if (result.success) healed = true;
+          }
+
+          if (healed) {
+            broadcast({ type: "log", name, source: "sanjang", data: "수정 완료. 다시 시작합니다..." });
+            upsert({ ...current, status: "starting" });
+            broadcast({ type: "playground-status", name, data: { status: "starting" } });
+
+            try {
+              const retryPort = await startCamp(current, (event) => {
+                broadcast({ type: event.type, name, data: event.data, source: event.source });
+              });
+              const retryUrl = `http://localhost:${retryPort}`;
+              upsert({ ...getOne(name)!, status: "running", fePort: retryPort, url: retryUrl });
+              broadcast({ type: "playground-status", name, data: { status: "running", url: retryUrl } });
+              broadcast({ type: "log", name, source: "sanjang", data: "자동 복구 성공 ✓" });
+              return; // healed successfully
+            } catch {
+              // retry failed too, fall through to error
+            }
+          }
+        }
+
         upsert({ ...current, status: "error" });
         broadcast({ type: "playground-status", name, data: { status: "error", error: friendlyStartError(err) } });
-
-        const processInfo = getProcessInfo(name) ?? { feLogs: [], feExitCode: null };
         const diagnostics = await buildDiagnostics(current, processInfo);
         broadcast({ type: "playground-diagnostics", name, data: diagnostics });
       } finally {

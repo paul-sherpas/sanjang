@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DetectedApp, DetectedProject, GenerateConfigResult, SanjangConfig } from "./types.ts";
+import { deepFindEnvFiles, detectSetupIssues } from "./engine/smart-init.ts";
 
 const CONFIG_FILE: string = "sanjang.config.js";
 
@@ -274,8 +275,16 @@ export function generateConfig(
     if (detected.setup) {
       detected.setup = `cd '${appDir.replace(/'/g, "'\\''")}' && ${detected.setup}`;
     }
-    detected.copyFiles = findEnvFiles(join(projectRoot, appDir)).map((f) => `${appDir}/${f}`);
   }
+
+  // Smart env detection — scan entire project tree, not just root
+  detected.copyFiles = deepFindEnvFiles(projectRoot).filter(
+    // Exclude .env.example, .env.test, .env.template
+    (f) => !f.includes("example") && !f.includes("template") && !f.includes(".test"),
+  );
+
+  // Detect potential issues
+  const issues = detectSetupIssues(detectRoot);
 
   const lines = [
     "export default {",
