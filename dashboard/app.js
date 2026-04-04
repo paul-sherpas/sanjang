@@ -1666,8 +1666,26 @@ function clearBrowserErrors() {
   renderBrowserErrors();
 }
 
-window.wsShip = function() {
+window.wsShip = async function() {
   if (!currentWorkspace) return;
+  // Fetch report for ship confirmation
+  try {
+    const report = await api('GET', `/api/playgrounds/${currentWorkspace}/change-report?ai=true`);
+    const reportPreview = document.getElementById('ship-report-preview');
+    if (reportPreview && report.totalCount > 0) {
+      let html = '';
+      if (report.humanDescription) {
+        html += `<div class="ship-report-desc">${escHtml(report.humanDescription)}</div>`;
+      }
+      if (report.warnings.length > 0) {
+        html += report.warnings.map(w =>
+          `<div class="ws-report-warning"><span>⚠️</span> ${escHtml(w.message)}</div>`
+        ).join('');
+      }
+      reportPreview.innerHTML = html;
+      reportPreview.style.display = html ? '' : 'none';
+    }
+  } catch { /* non-blocking */ }
   openShipModal(currentWorkspace);
 };
 

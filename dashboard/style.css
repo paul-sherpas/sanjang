@@ -2202,3 +2202,7 @@ header.hidden {
   background: var(--surface); padding: 2px 8px; border-radius: 4px;
   font-size: 11px; color: var(--text-muted); pointer-events: none;
 }
+
+/* Ship report preview */
+.ship-report-preview { margin-bottom: 12px; padding: 10px; background: var(--surface); border-radius: 6px; font-size: 13px; line-height: 1.5; }
+.ship-report-desc { margin-bottom: 8px; }

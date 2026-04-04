@@ -1075,6 +1075,31 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           const diff =
             spawnSync("git", ["-C", wtPath, "diff", "HEAD~1"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
 
+          // Change report warnings for PR body — based on full diff since camp creation
+          let reportWarnings = "";
+          try {
+            const base = pg.baseCommit;
+            if (base) {
+              const diffFiles = spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${base}..HEAD`], {
+                encoding: "utf8", stdio: "pipe"
+              }).stdout?.trim() || "";
+              if (diffFiles) {
+                const parsedFiles = diffFiles.split("\n").map(line => {
+                  const [st, ...pathParts] = line.split("\t");
+                  return {
+                    path: pathParts.join("\t"),
+                    status: (st === "M" ? "수정" : st === "D" ? "삭제" : st === "A" ? "추가" : "수정") as "수정" | "추가" | "삭제" | "새 파일"
+                  };
+                });
+                const shipReport = buildChangeReport(parsedFiles);
+                if (shipReport.warnings.length > 0) {
+                  reportWarnings = "\n\n### ⚠️ 주의사항\n" +
+                    shipReport.warnings.map(w => `- ${w.message}`).join("\n");
+                }
+              }
+            }
+          } catch { /* non-critical */ }
+
           // Try Claude for rich PR body, fallback to simple
           const claudeCheck = spawnSync("which", ["claude"], { stdio: "pipe" });
           let prBody: string;
@@ -1090,10 +1115,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             });
             prBody =
               claudeResult.status === 0 && claudeResult.stdout?.trim()
-                ? claudeResult.stdout.trim()
-                : buildFallbackPrBody({ message, actions, diffStat });
+                ? claudeResult.stdout.trim() + reportWarnings
+                : buildFallbackPrBody({ message, actions, diffStat }) + reportWarnings;
           } else {
-            prBody = buildFallbackPrBody({ message, actions, diffStat });
+            prBody = buildFallbackPrBody({ message, actions, diffStat }) + reportWarnings;
           }
 
           const prResult = spawnSync(
