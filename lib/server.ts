@@ -1897,11 +1897,19 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 export async function startServer(projectRoot: string, options: CreateAppOptions = {}): Promise<Server> {
   const { server, port, runningTasks, warpStatus, watchers } = await createApp(projectRoot, options);
   server.listen(port, "127.0.0.1", () => {
-    console.log(`⛰ 산장 서버 실행 중 — http://localhost:${port}`);
+    const url = `http://localhost:${port}`;
+    console.log(`⛰ 산장 서버 실행 중 — ${url}`);
     if (warpStatus.installed) {
       console.log("  Warp 감지됨 ✓ — 캠프 진입 시 터미널이 자동으로 열립니다");
     } else {
       console.log("  ℹ Warp를 설치하면 캠프↔터미널 자동 연동을 사용할 수 있습니다");
+    }
+    // Auto-open browser
+    const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    try {
+      spawn(openCmd, [url], { stdio: "ignore", detached: true }).unref();
+    } catch {
+      // Silently ignore — CLI-only environments
     }
   });
 

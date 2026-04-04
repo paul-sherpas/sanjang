@@ -1,3 +1,12 @@
+// Node 22+ required for --experimental-transform-types
+const nodeVersion = parseInt(process.versions.node.split(".")[0]!, 10);
+if (nodeVersion < 22) {
+  console.error(`⛰ 산장: Node 22 이상이 필요합니다. (현재: v${process.versions.node})`);
+  console.error("  해결: nvm install 22 && nvm use 22");
+  console.error("  또는: https://nodejs.org 에서 최신 LTS를 설치하세요.");
+  process.exit(1);
+}
+
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
