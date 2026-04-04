@@ -144,13 +144,17 @@ export function detectProject(projectRoot: string): DetectedProject {
 
   // Monorepo detection
   if (has("turbo.json")) {
-    const actualPort = detectTurboPort(projectRoot) || 3000;
+    const mainApp = detectTurboMainApp(projectRoot);
+    const filter = mainApp ? ` --filter=${mainApp.name}` : "";
+    const port = mainApp?.port ?? 3000;
     return {
       framework: "Turborepo",
-      dev: { command: "npx turbo run dev", port: actualPort, portFlag: null, cwd: ".", env: {} },
+      dev: { command: `npx turbo run dev${filter}`, port, portFlag: null, cwd: ".", env: {} },
       setup: detectPackageManager(projectRoot),
       copyFiles: findEnvFiles(projectRoot),
-      _note: "Turborepo detected. You may need to adjust the dev command to filter a specific app.",
+      _note: mainApp
+        ? `Turborepo: filtered to ${mainApp.name} (port ${port}).`
+        : "Turborepo detected. You may need to adjust the dev command to filter a specific app.",
     };
   }
 
@@ -200,9 +204,16 @@ export function detectApps(projectRoot: string): DetectedApp[] {
   return apps.sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
-function detectTurboPort(root: string): number | null {
-  // Scan apps/*/package.json and packages/*/package.json for --port in dev scripts
+interface TurboAppInfo {
+  name: string;
+  port: number;
+}
+
+function detectTurboMainApp(root: string): TurboAppInfo | null {
+  // Scan apps/*/package.json for the main app (has dev script with --port or vite/next)
   const appDirs = ["apps", "packages"];
+  const candidates: TurboAppInfo[] = [];
+
   for (const dir of appDirs) {
     const base = join(root, dir);
     if (!existsSync(base)) continue;
@@ -210,6 +221,8 @@ function detectTurboPort(root: string): number | null {
     try { entries = readdirSync(base, { withFileTypes: true }); } catch { continue; }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      // Skip storybook, demo, docs apps
+      if (/storybook|demo|docs|e2e|test/i.test(entry.name)) continue;
       const pkgPath = join(base, entry.name, "package.json");
       if (!existsSync(pkgPath)) continue;
       try {
@@ -218,11 +231,14 @@ function detectTurboPort(root: string): number | null {
         const devScript = scripts?.dev;
         if (!devScript) continue;
         const portMatch = devScript.match(/--port\s+(\d+)/);
-        if (portMatch?.[1]) return parseInt(portMatch[1], 10);
+        const port = portMatch?.[1] ? parseInt(portMatch[1], 10) : 3000;
+        candidates.push({ name: entry.name, port });
       } catch { continue; }
     }
   }
-  return null;
+
+  // Prefer app with explicit port, then first candidate
+  return candidates.find(c => c.port !== 3000) ?? candidates[0] ?? null;
 }
 
 function detectPackageManager(root: string): string {
