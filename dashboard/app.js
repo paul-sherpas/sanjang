@@ -15,8 +15,6 @@ const logs = new Map();
 /** @type {Map<string, Array>} diagnostics keyed by playground name */
 const diagnostics = new Map();
 
-/** @type {Map<string, { running: boolean, prompt: string }>} task states */
-const taskStates = new Map();
 
 /** @type {string|null} name of camp in workspace view, or null for list view */
 let currentWorkspace = null;
@@ -157,51 +155,6 @@ function handleWsMessage(msg) {
       break;
     }
 
-    case 'task-started': {
-      if (!name) break;
-      taskStates.set(name, { running: true, prompt: data?.prompt ?? '' });
-      renderAll();
-      toast(`캠프 "${name}"에 일 시킴!`, 'success');
-      break;
-    }
-
-    case 'task-output': {
-      if (!name) break;
-      if (!logs.has(name)) logs.set(name, []);
-      const taskLines = logs.get(name);
-      taskLines.push({ text: data?.text ?? '', source: 'task' });
-      if (taskLines.length > 100) taskLines.splice(0, taskLines.length - 100);
-      updateLogPanel(name);
-      if (currentWorkspace === name) updateWorkspaceLog(name);
-      // auto-open log panel when task output comes
-      const logToggle = document.querySelector(`[data-name="${name}"] .log-toggle`);
-      if (logToggle && !logToggle.classList.contains('open')) logToggle.click();
-      break;
-    }
-
-    case 'task-done': {
-      if (!name) break;
-      taskStates.delete(name);
-      renderAll();
-      toast(`캠프 "${name}" 작업 완료!`, 'success');
-      break;
-    }
-
-    case 'task-error': {
-      if (!name) break;
-      taskStates.delete(name);
-      renderAll();
-      toast(`캠프 "${name}" 작업 실패: ${data?.error}`, 'error');
-      break;
-    }
-
-    case 'task-cancelled': {
-      if (!name) break;
-      taskStates.delete(name);
-      renderAll();
-      toast(`캠프 "${name}" 작업 취소됨`, 'success');
-      break;
-    }
 
     case 'reset': {
       if (!name) break;
@@ -242,6 +195,22 @@ function handleWsMessage(msg) {
     case 'playground-saved': {
       if (!name) break;
       toast(`💾 세이브됨: ${data?.message || ''}`, 'success');
+      break;
+    }
+
+    case 'autosaved': {
+      if (!name) break;
+      toast('💾 오토세이브 완료', 'success');
+      if (currentWorkspace === name) {
+        api('POST', `/api/playgrounds/${name}/enter`).then(renderWorkspace).catch(() => {});
+      }
+      break;
+    }
+
+    case 'browser-error': {
+      if (!name || !data) break;
+      if (currentWorkspace !== name) break;
+      addBrowserError(data);
       break;
     }
 
@@ -1137,30 +1106,6 @@ window.resolveAbort = async function resolveAbort() {
   conflictCampName = null;
 };
 
-// ---------------------------------------------------------------------------
-// Task — 일 시키기
-// ---------------------------------------------------------------------------
-
-window.sendTask = async function sendTask(name) {
-  const input = document.getElementById(`task-input-${name}`);
-  if (!input) return;
-  const prompt = input.value.trim();
-  if (!prompt) { toast('뭘 해줄지 입력해주세요!', 'error'); return; }
-
-  try {
-    await api('POST', `/api/playgrounds/${name}/task`, { prompt });
-  } catch (err) {
-    toast(`일 시키기 실패: ${err.message}`, 'error');
-  }
-};
-
-window.cancelTask = async function cancelTask(name) {
-  try {
-    await api('POST', `/api/playgrounds/${name}/task/cancel`);
-  } catch (err) {
-    toast(`취소 실패: ${err.message}`, 'error');
-  }
-};
 
 // ---------------------------------------------------------------------------
 // Workspace View — SPA routing (list ↔ workspace)
@@ -1168,6 +1113,7 @@ window.cancelTask = async function cancelTask(name) {
 
 function enterWorkspace(name) {
   currentWorkspace = name;
+  clearBrowserErrors();
   document.getElementById('grid').classList.add('hidden');
   document.getElementById('portal').classList.add('hidden');
   document.querySelector('header').classList.add('hidden');
@@ -1196,7 +1142,7 @@ function exitWorkspace() {
 window.exitWorkspace = exitWorkspace;
 
 function renderWorkspace(data) {
-  const { camp, changes, warpInstalled, previewUrl } = data;
+  const { camp, changes, warpInstalled, previewUrl, autosave } = data;
 
   // Header
   document.getElementById('ws-title').textContent = `캠프: ${camp.name}`;
@@ -1245,6 +1191,7 @@ function renderWorkspace(data) {
       `<div class="ws-commit-item">
         <span class="ws-commit-msg">${escHtml(c.message)}</span>
         <span class="ws-commit-date">${escHtml(c.date)}</span>
+        <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
       </div>`
     ).join('');
   } else if (changes.count > 0) {
@@ -1253,23 +1200,22 @@ function renderWorkspace(data) {
     actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 없음</span>';
   }
 
-  // Preview
+  // Preview — use proxy URL (same origin, no X-Frame-Options issues)
   const previewEl = document.getElementById('ws-preview');
   if (previewUrl) {
+    const port = new URL(previewUrl).port || '80';
+    const proxyUrl = `/preview/${port}/`;
     previewEl.innerHTML = `
-      <iframe src="${escHtml(previewUrl)}" class="ws-preview-iframe"></iframe>
+      <iframe src="${escHtml(proxyUrl)}" class="ws-preview-iframe"></iframe>
       <div class="ws-preview-fallback" style="display:none">
         <a href="${escHtml(previewUrl)}" target="_blank" class="btn btn-primary">
           새 탭에서 열기 → ${escHtml(previewUrl)}
         </a>
       </div>`;
-    // iframe load event — detect X-Frame-Options block via cross-origin access
     const iframe = previewEl.querySelector('iframe');
-    iframe.addEventListener('load', () => {
-      try { iframe.contentDocument; } catch {
-        iframe.style.display = 'none';
-        previewEl.querySelector('.ws-preview-fallback').style.display = 'flex';
-      }
+    iframe.addEventListener('error', () => {
+      iframe.style.display = 'none';
+      previewEl.querySelector('.ws-preview-fallback').style.display = 'flex';
     });
   } else {
     previewEl.innerHTML = `<span style="color:var(--text-muted);font-size:13px">
@@ -1280,6 +1226,10 @@ function renderWorkspace(data) {
   // Terminal button label
   const termBtn = document.getElementById('ws-terminal-btn');
   termBtn.textContent = warpInstalled ? '💻 터미널' : '💻 경로 복사';
+
+  // Autosave toggle
+  const autosaveCheck = document.getElementById('ws-autosave-check');
+  if (autosaveCheck) autosaveCheck.checked = !!autosave;
 
   // Log — show existing logs
   updateWorkspaceLog(camp.name);
@@ -1379,6 +1329,18 @@ function playSaveEffect() {
     miniChar.className = 'ws-mini-char ws-mini-char-saved';
     setTimeout(() => updateMiniChar('running', 0), 1000);
   }
+
+  // 5. Slide-in new save entry in history
+  setTimeout(() => {
+    const actionsEl = document.getElementById('ws-actions');
+    if (actionsEl) {
+      const firstItem = actionsEl.querySelector('.ws-commit-item');
+      if (firstItem) {
+        firstItem.classList.add('ws-commit-slide-in');
+        setTimeout(() => firstItem.classList.remove('ws-commit-slide-in'), 500);
+      }
+    }
+  }, 500); // Wait for workspace data refresh
 }
 
 function updateMiniChar(status, changeCount) {
@@ -1500,16 +1462,68 @@ function updateWorkspaceLog(name) {
   panel.scrollTop = panel.scrollHeight;
 }
 
-// Workspace action handlers — reuse existing functions
-window.wsSubmitTask = function() {
+// ---------------------------------------------------------------------------
+// Browser Error Panel
+// ---------------------------------------------------------------------------
+
+/** @type {Array<{level: string, message: string, source?: string, line?: number, ts: number}>} */
+const browserErrors = [];
+
+function addBrowserError(data) {
+  browserErrors.push({ ...data, ts: Date.now() });
+  if (browserErrors.length > 50) browserErrors.shift();
+  renderBrowserErrors();
+}
+
+function renderBrowserErrors() {
+  const panel = document.getElementById('ws-browser-errors');
+  if (!panel) return;
+  const badge = document.getElementById('ws-browser-error-badge');
+  if (browserErrors.length === 0) {
+    panel.innerHTML = '<span style="color:var(--text-muted);font-size:12px">에러 없음</span>';
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  if (badge) {
+    badge.style.display = '';
+    badge.textContent = browserErrors.length;
+  }
+  panel.innerHTML = browserErrors.slice(-20).reverse().map(e => {
+    const loc = e.source ? ` <span style="color:var(--text-muted)">${escHtml(e.source.split('/').pop())}:${e.line || ''}</span>` : '';
+    return `<div class="ws-browser-error-item">
+      <span class="ws-browser-error-level">${escHtml(e.level)}</span>
+      <span class="ws-browser-error-msg">${escHtml(e.message)}</span>${loc}
+    </div>`;
+  }).join('');
+}
+
+window.toggleAutosave = async function toggleAutosave(enabled) {
   if (!currentWorkspace) return;
-  const input = document.getElementById('ws-task-input');
-  const prompt = input.value.trim();
-  if (!prompt) { toast('뭘 해줄지 입력해주세요!', 'error'); return; }
-  api('POST', `/api/playgrounds/${currentWorkspace}/task`, { prompt })
-    .then(() => { input.value = ''; })
-    .catch(err => toast(`일 시키기 실패: ${err.message}`, 'error'));
+  try {
+    await api('POST', `/api/playgrounds/${currentWorkspace}/autosave`, { enabled });
+    toast(enabled ? '오토세이브 켜짐 (5분)' : '오토세이브 꺼짐', 'info');
+  } catch (err) {
+    toast(`오토세이브 설정 실패: ${err.message}`, 'error');
+  }
 };
+
+window.revertCommit = async function revertCommit(hash) {
+  if (!currentWorkspace) return;
+  if (!confirm('이 세이브를 되돌릴까요?')) return;
+  try {
+    await api('POST', `/api/playgrounds/${currentWorkspace}/revert-commit`, { hash });
+    toast('되돌리기 완료', 'success');
+    const data = await api('POST', `/api/playgrounds/${currentWorkspace}/enter`);
+    renderWorkspace(data);
+  } catch (err) {
+    toast(`되돌리기 실패: ${err.message}`, 'error');
+  }
+};
+
+function clearBrowserErrors() {
+  browserErrors.length = 0;
+  renderBrowserErrors();
+}
 
 window.wsShip = function() {
   if (!currentWorkspace) return;
@@ -1741,6 +1755,118 @@ window.autoFix = async function autoFix(name) {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Onboarding Tutorial
+// ---------------------------------------------------------------------------
+
+const ONBOARDING_KEY = 'sanjang-onboarded';
+
+const onboardingSteps = [
+  {
+    target: '#quickstart-input',
+    title: '캠프 만들기',
+    text: '뭘 하고 싶은지 입력하면 AI가 알���서 캠프를 만들어요.',
+    position: 'bottom',
+  },
+  {
+    target: '#ws-preview',
+    title: '프리뷰 확인',
+    text: '캠프에 들어가면 전체화면으로 프리뷰를 볼 수 있어요.',
+    position: 'center',
+    waitForWorkspace: true,
+  },
+  {
+    target: '#ws-save-btn',
+    title: '세이브하기',
+    text: '변경���항이 있으면 세이브 버튼으로 저장해요. 게임 세이브처럼요!',
+    position: 'left',
+    waitForWorkspace: true,
+  },
+];
+
+function showOnboarding() {
+  if (localStorage.getItem(ONBOARDING_KEY)) return;
+  let step = 0;
+
+  function show() {
+    // Remove previous
+    document.querySelector('.onboarding-overlay')?.remove();
+
+    if (step >= onboardingSteps.length) {
+      localStorage.setItem(ONBOARDING_KEY, '1');
+      return;
+    }
+
+    const s = onboardingSteps[step];
+
+    // Skip workspace steps if not in workspace
+    if (s.waitForWorkspace && !currentWorkspace) {
+      step++;
+      show();
+      return;
+    }
+
+    const el = document.querySelector(s.target);
+    if (!el) { step++; show(); return; }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'onboarding-overlay';
+
+    const rect = el.getBoundingClientRect();
+    const highlight = document.createElement('div');
+    highlight.className = 'onboarding-highlight';
+    highlight.style.top = `${rect.top - 4}px`;
+    highlight.style.left = `${rect.left - 4}px`;
+    highlight.style.width = `${rect.width + 8}px`;
+    highlight.style.height = `${rect.height + 8}px`;
+    overlay.appendChild(highlight);
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'onboarding-tooltip';
+    tooltip.innerHTML = `
+      <div class="onboarding-title">${s.title}</div>
+      <div class="onboarding-text">${s.text}</div>
+      <div class="onboarding-actions">
+        <span class="onboarding-step">${step + 1}/${onboardingSteps.length}</span>
+        <button class="btn btn-ghost btn-sm" onclick="skipOnboarding()">건너뛰기</button>
+        <button class="btn btn-primary btn-sm" onclick="nextOnboardingStep()">${step === onboardingSteps.length - 1 ? '완료' : '다음'}</button>
+      </div>`;
+
+    // Position tooltip near target
+    if (s.position === 'bottom') {
+      tooltip.style.top = `${rect.bottom + 12}px`;
+      tooltip.style.left = `${Math.max(12, rect.left)}px`;
+    } else if (s.position === 'left') {
+      tooltip.style.top = `${rect.top}px`;
+      tooltip.style.right = `${window.innerWidth - rect.left + 12}px`;
+    } else {
+      tooltip.style.top = '50%';
+      tooltip.style.left = '50%';
+      tooltip.style.transform = 'translate(-50%, -50%)';
+    }
+
+    overlay.appendChild(tooltip);
+    document.body.appendChild(overlay);
+  }
+
+  window.nextOnboardingStep = function() {
+    step++;
+    show();
+  };
+
+  window.skipOnboarding = function() {
+    document.querySelector('.onboarding-overlay')?.remove();
+    localStorage.setItem(ONBOARDING_KEY, '1');
+  };
+
+  // Start first step (only if on portal/quickstart visible)
+  show();
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
 async function init() {
   try {
     const pgs = await api('GET', '/api/playgrounds');
@@ -1754,6 +1880,9 @@ async function init() {
   loadPortal();
   loadSuggestions();
   connectWs();
+
+  // Show onboarding for first-time users
+  setTimeout(showOnboarding, 500);
 }
 
 document.addEventListener('DOMContentLoaded', init);

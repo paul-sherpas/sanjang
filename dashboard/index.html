@@ -75,7 +75,13 @@
       <div class="ws-panel-content">
         <div class="workspace-section ws-unsaved-section" id="ws-unsaved-section">
           <div id="ws-changes-summary-text" class="ws-summary-text"></div>
-          <button class="btn btn-save" id="ws-save-btn" onclick="wsSave()">💾 세이브하기</button>
+          <div class="ws-save-row">
+            <button class="btn btn-save" id="ws-save-btn" onclick="wsSave()">💾 세이브하기</button>
+            <label class="ws-autosave-toggle" title="5분간 변경 없으면 자동 세이브">
+              <input type="checkbox" id="ws-autosave-check" onchange="toggleAutosave(this.checked)">
+              <span class="ws-autosave-label">자동</span>
+            </label>
+          </div>
           <details class="ws-file-details">
             <summary>파일 보기</summary>
             <div id="ws-changes"></div>
@@ -86,17 +92,17 @@
           <div id="ws-actions"></div>
         </div>
         <details class="workspace-section ws-log-details">
+          <summary>🔴 브라우저 에러 <span class="ws-error-badge" id="ws-browser-error-badge" style="display:none">0</span></summary>
+          <div class="ws-browser-error-panel" id="ws-browser-errors">
+            <span style="color:var(--text-muted);font-size:12px">에러 없음</span>
+          </div>
+        </details>
+        <details class="workspace-section ws-log-details">
           <summary>📜 로그</summary>
           <div class="ws-log-panel" id="ws-log"><pre></pre></div>
         </details>
       </div>
       <div class="ws-panel-actions">
-        <div class="workspace-task-row">
-          <input class="form-input" id="ws-task-input" type="text"
-            placeholder="뭐 해줄까?" autocomplete="off" spellcheck="false"
-            onkeydown="if(event.key==='Enter')wsSubmitTask()">
-          <button class="btn btn-primary btn-sm" onclick="wsSubmitTask()">시키기</button>
-        </div>
         <div class="workspace-btn-row">
           <button class="btn btn-accent btn-sm" id="ws-ship-btn" onclick="wsShip()">팀에 보내기</button>
           <button class="btn btn-sub btn-sm" onclick="wsSnap()">📸</button>

@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, request as httpRequest, type IncomingMessage } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
@@ -256,6 +256,40 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
   // File watchers for running camps — push changes via WebSocket
   const watchers = new Map<string, CampWatcher>();
+  const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const autosaveEnabled = new Set<string>();
+  const AUTOSAVE_DELAY = 5 * 60 * 1000; // 5 minutes of inactivity
+
+  function resetAutosaveTimer(name: string): void {
+    const existing = autosaveTimers.get(name);
+    if (existing) clearTimeout(existing);
+    if (!autosaveEnabled.has(name)) return;
+
+    autosaveTimers.set(name, setTimeout(async () => {
+      autosaveTimers.delete(name);
+      const pg = getOne(name);
+      if (!pg) return;
+      const wtPath = campPath(name);
+      const files = getChangedFiles(wtPath);
+      if (files.length === 0) return;
+
+      try {
+        // Reattach if detached
+        const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
+        if (headRef.status !== 0 && pg.branch) {
+          const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+          if (cur) {
+            spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, cur], { stdio: "pipe" });
+            spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
+          }
+        }
+        runGit(["-C", wtPath, "add", "-A"], wtPath);
+        runGit(["-C", wtPath, "commit", "-m", `[auto] ${files.length}개 파일 자동 세이브`], wtPath);
+        broadcast({ type: "playground-saved", name, data: { message: `[auto] ${files.length}개 파일 자동 세이브`, auto: true } });
+        broadcast({ type: "autosaved", name });
+      } catch { /* ignore */ }
+    }, AUTOSAVE_DELAY));
+  }
 
   function startWatcher(name: string): void {
     if (watchers.has(name)) return;
@@ -268,6 +302,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           name,
           data: { count: files.length, files, ts: Date.now() },
         });
+        // Reset autosave timer on any file change
+        if (autosaveEnabled.has(name)) resetAutosaveTimer(name);
       } catch { /* ignore — worktree may be deleted */ }
     }, 800);
     watcher.start();
@@ -279,6 +315,11 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (w) {
       w.stop();
       watchers.delete(name);
+    }
+    const timer = autosaveTimers.get(name);
+    if (timer) {
+      clearTimeout(timer);
+      autosaveTimers.delete(name);
     }
   }
 
@@ -299,6 +340,116 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
   wss.on("connection", (ws: WebSocket) => {
     ws.on("error", (err: Error) => console.error("[ws] client error:", err.message));
+    ws.on("message", (raw: Buffer) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "browser-error" && msg.name) {
+          broadcast({ type: "browser-error", name: msg.name, data: msg.data });
+        }
+      } catch { /* ignore non-JSON */ }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Preview Proxy — /preview/:port/* proxies to localhost:port
+  // Injects a small script into HTML responses to capture browser errors
+  // -------------------------------------------------------------------------
+
+  const INJECTED_SCRIPT = `<script data-sanjang-injected>
+(function(){
+  var ws=null,q=[];
+  function send(d){if(ws&&ws.readyState===1)ws.send(JSON.stringify(d));else q.push(d)}
+  function connect(){
+    ws=new WebSocket('ws://'+location.hostname+':'+new URLSearchParams(location.search.slice(1)||'').get('_sp')||location.port);
+    ws.onopen=function(){while(q.length)ws.send(JSON.stringify(q.shift()))};
+    ws.onclose=function(){setTimeout(connect,3000)};
+  }
+  var name=document.currentScript.getAttribute('data-camp');
+  window.addEventListener('error',function(e){
+    send({type:'browser-error',name:name,data:{level:'error',message:e.message,source:e.filename,line:e.lineno,col:e.colno}});
+  });
+  var origError=console.error;
+  console.error=function(){
+    var args=[].slice.call(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(e){return String(a)}});
+    send({type:'browser-error',name:name,data:{level:'console.error',message:args.join(' ')}});
+    origError.apply(console,arguments);
+  };
+  window.addEventListener('unhandledrejection',function(e){
+    send({type:'browser-error',name:name,data:{level:'promise',message:String(e.reason)}});
+  });
+  connect();
+})();
+</script>`;
+
+  app.use("/preview/:port", (req: Request, res: Response) => {
+    const targetPort = parseInt(req.params.port as string, 10);
+    if (!Number.isFinite(targetPort) || targetPort < 1000 || targetPort > 65535) {
+      return res.status(400).send("Invalid port");
+    }
+
+    // Find camp name by port
+    const camps = getAll();
+    const camp = camps.find(c => c.fePort === targetPort);
+    const campName = camp?.name ?? "unknown";
+
+    const targetPath = req.url || "/";
+    const proxyReq = httpRequest(
+      { hostname: "127.0.0.1", port: targetPort, path: targetPath, method: req.method, headers: { ...req.headers, host: `localhost:${targetPort}` } },
+      (proxyRes: IncomingMessage) => {
+        const contentType = proxyRes.headers["content-type"] || "";
+        const isHtml = contentType.includes("text/html");
+
+        if (!isHtml) {
+          // Pass through non-HTML responses directly
+          res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+          proxyRes.pipe(res);
+          return;
+        }
+
+        // Buffer HTML to inject script
+        const chunks: Buffer[] = [];
+        proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
+        proxyRes.on("end", () => {
+          let body = Buffer.concat(chunks).toString("utf8");
+          const script = INJECTED_SCRIPT
+            .replace("data-camp'", `data-camp'`) // placeholder
+            .replace("data-sanjang-injected>", `data-sanjang-injected data-camp="${campName}">`);
+          // Replace _sp port placeholder with actual sanjang server port
+          const finalScript = script.replace(
+            "new URLSearchParams(location.search.slice(1)||'').get('_sp')||location.port",
+            `'${port}'`,
+          );
+          // Inject before </head> or </body> or at end
+          if (body.includes("</head>")) {
+            body = body.replace("</head>", `${finalScript}</head>`);
+          } else if (body.includes("</body>")) {
+            body = body.replace("</body>", `${finalScript}</body>`);
+          } else {
+            body += finalScript;
+          }
+          // Remove content-length (body size changed) and content-encoding (we decoded it)
+          const headers = { ...proxyRes.headers };
+          delete headers["content-length"];
+          delete headers["content-encoding"];
+          delete headers["transfer-encoding"];
+          // Remove X-Frame-Options / frame-ancestors to allow iframe embedding
+          delete headers["x-frame-options"];
+          if (typeof headers["content-security-policy"] === "string") {
+            headers["content-security-policy"] = headers["content-security-policy"]
+              .replace(/frame-ancestors[^;]*(;|$)/gi, "");
+          }
+          res.writeHead(proxyRes.statusCode ?? 200, headers);
+          res.end(body);
+        });
+      },
+    );
+
+    proxyReq.on("error", () => {
+      res.status(502).send("프리뷰 서버에 연결할 수 없습니다.");
+    });
+
+    // Forward request body for POST etc
+    req.pipe(proxyReq);
   });
 
   // -------------------------------------------------------------------------
@@ -565,6 +716,26 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }
+  });
+
+  // POST /api/playgrounds/:name/autosave — 오토세이브 토글
+  app.post("/api/playgrounds/:name/autosave", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const { enabled } = req.body ?? {};
+    if (!getOne(name)) return res.status(404).json({ error: "not found" });
+    if (enabled) {
+      autosaveEnabled.add(name);
+      resetAutosaveTimer(name);
+    } else {
+      autosaveEnabled.delete(name);
+      const timer = autosaveTimers.get(name);
+      if (timer) { clearTimeout(timer); autosaveTimers.delete(name); }
+    }
+    res.json({ autosave: autosaveEnabled.has(name) });
+  });
+
+  app.get("/api/playgrounds/:name/autosave", (req: NameReq, res: Response) => {
+    res.json({ autosave: autosaveEnabled.has(req.params.name) });
   });
 
   app.post("/api/playgrounds/:name/reset", async (req: NameReq, res: Response) => {
@@ -902,7 +1073,40 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  // Shared task runner state (used by task endpoint and conflict resolver)
+  // POST /api/playgrounds/:name/revert-commit — 세이브(커밋) 되돌리기
+  app.post("/api/playgrounds/:name/revert-commit", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const { hash } = req.body ?? {};
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+    if (!hash || typeof hash !== "string" || !/^[a-f0-9]+$/.test(hash)) {
+      return res.status(400).json({ error: "유효하지 않은 커밋 해시입니다." });
+    }
+    try {
+      const wtPath = campPath(name);
+      const result = spawnSync("git", ["-C", wtPath, "revert", "--no-commit", hash], {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+      if (result.status !== 0) {
+        // Abort revert on failure
+        spawnSync("git", ["-C", wtPath, "revert", "--abort"], { stdio: "pipe" });
+        const stderr = result.stderr?.trim() || "";
+        if (stderr.includes("CONFLICT")) {
+          return res.status(409).json({ error: "되돌리기 중 충돌이 발생했습니다. 수동으로 해결해주세요." });
+        }
+        return res.status(500).json({ error: stderr || "되돌리기에 실패했습니다." });
+      }
+      // Auto-commit the revert
+      spawnSync("git", ["-C", wtPath, "commit", "-m", `되돌리기: ${hash.slice(0, 7)}`], { stdio: "pipe" });
+      broadcast({ type: "playground-saved", name, data: { message: `되돌리기: ${hash.slice(0, 7)}` } });
+      res.json({ reverted: true });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Shared state (used by conflict resolver)
   const runningTasks = new Map<string, ChildProcess>();
 
   app.post("/api/playgrounds/:name/sync", (req: NameReq, res: Response) => {
@@ -1035,66 +1239,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ aborted: true });
   });
 
-  // -------------------------------------------------------------------------
-  // Task runner (claude -p spawn)
-  // -------------------------------------------------------------------------
-
-  app.post("/api/playgrounds/:name/task", (req: NameReq, res: Response) => {
-    const { name } = req.params;
-    const { prompt } = req.body ?? {};
-    const pg = getOne(name);
-    if (!pg) return res.status(404).json({ error: "캠프를 찾을 수 없습니다." });
-    if (!prompt?.trim()) return res.status(400).json({ error: "할 일을 입력해주세요." });
-    if (runningTasks.has(name)) return res.status(409).json({ error: "이미 작업 중입니다." });
-
-    const cwd = campPath(name);
-    const child = spawn("claude", ["-p", prompt.trim(), "--output-format", "text"], {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, FORCE_COLOR: "0" },
-    });
-
-    runningTasks.set(name, child);
-    broadcast({ type: "task-started", name, data: { prompt: prompt.trim() } });
-
-    child.stdout!.on("data", (chunk: Buffer) => {
-      broadcast({ type: "task-output", name, data: { text: chunk.toString() } });
-    });
-    child.stderr!.on("data", (chunk: Buffer) => {
-      broadcast({ type: "task-output", name, data: { text: chunk.toString() } });
-    });
-    child.on("close", (code: number | null) => {
-      runningTasks.delete(name);
-      const actions = readActions(name);
-      actions.push({ description: prompt.trim(), files: [], ts: Date.now() });
-      writeActions(name, actions);
-      broadcast({ type: "task-done", name, data: { code, prompt: prompt.trim() } });
-    });
-    child.on("error", (err: NodeJS.ErrnoException) => {
-      runningTasks.delete(name);
-      const msg =
-        err.code === "ENOENT"
-          ? "Claude CLI가 설치되어 있지 않습니다. npm i -g @anthropic-ai/claude-code 로 설치하세요."
-          : err.message;
-      broadcast({ type: "task-error", name, data: { error: msg } });
-    });
-
-    res.json({ started: true });
-  });
-
-  app.post("/api/playgrounds/:name/task/cancel", (req: NameReq, res: Response) => {
-    const { name } = req.params;
-    const child = runningTasks.get(name);
-    if (!child) return res.status(404).json({ error: "진행 중인 작업이 없습니다." });
-    child.kill("SIGTERM");
-    runningTasks.delete(name);
-    broadcast({ type: "task-cancelled", name });
-    res.json({ cancelled: true });
-  });
-
-  app.get("/api/playgrounds/:name/task/status", (req: NameReq, res: Response) => {
-    res.json({ running: runningTasks.has(req.params.name) });
-  });
+  // Task runner removed — use Claude Code directly in the terminal
 
   // POST /api/playgrounds/:name/enter — 캠프 진입 (정보 조회만, 터미널은 별도)
   app.post("/api/playgrounds/:name/enter", async (req: NameReq, res: Response) => {
@@ -1137,6 +1282,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       commits,
       warpInstalled: warpStatus.installed,
       previewUrl: pg.status === "running" ? `http://localhost:${pg.fePort}` : null,
+      autosave: autosaveEnabled.has(name),
     });
   });
 

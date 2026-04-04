@@ -1059,6 +1059,46 @@ header h1::before {
 .ws-log-panel::-webkit-scrollbar-track { background: transparent; }
 .ws-log-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+/* Browser error panel */
+.ws-browser-error-panel {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.ws-browser-error-item {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.ws-browser-error-level {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.ws-browser-error-msg {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.ws-error-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 6px;
+}
+
 .ws-file-item {
   display: flex;
   align-items: center;
@@ -1074,15 +1114,6 @@ header h1::before {
 }
 
 /* workspace-actions removed — replaced by ws-panel-actions */
-
-.workspace-task-row {
-  display: flex;
-  gap: 8px;
-}
-
-.workspace-task-row .form-input {
-  flex: 1;
-}
 
 .workspace-btn-row {
   display: flex;
@@ -1469,69 +1500,6 @@ header.hidden {
   to   { transform: translateX(1px); }
 }
 
-/* ============================================================
-   Task — 일 시키기
-   ============================================================ */
-
-.card-task {
-  margin-bottom: 4px;
-}
-
-.task-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.task-input {
-  flex: 1;
-  font-size: 13px;
-  padding: 10px 14px;
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.task-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-glow);
-}
-
-.task-input::placeholder {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.task-running {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--accent-glow);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: var(--radius-sm);
-}
-
-.task-running-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.task-running-text {
-  flex: 1;
-  font-size: 12px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Log line for task output */
-.log-line-task { color: var(--accent); }
 
 /* ============================================================
    Portal Home
@@ -1686,14 +1654,31 @@ header.hidden {
   padding: 4px 0 8px;
   line-height: 1.4;
 }
+.ws-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
 .btn-save {
   background: var(--yellow, #eab308);
   color: #000;
   font-weight: 600;
-  width: 100%;
+  flex: 1;
   padding: 8px;
   border-radius: 6px;
-  margin-bottom: 8px;
+}
+.ws-autosave-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ws-autosave-toggle input {
+  accent-color: var(--accent);
 }
 .btn-save:hover:not(:disabled) {
   background: #ca9a06;
@@ -1742,6 +1727,16 @@ header.hidden {
   white-space: nowrap;
   flex-shrink: 0;
 }
+.ws-revert-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+  font-size: 12px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.ws-commit-item:hover .ws-revert-btn {
+  opacity: 1;
+}
 
 /* === Gamification: Unsaved pixel blocks === */
 .ws-blocks {
@@ -1787,6 +1782,16 @@ header.hidden {
   33% { transform: translateY(-8px); }
   66% { transform: translateY(-20px) scale(0.5); opacity: 0.5; }
   100% { transform: translateY(-30px) scale(0); opacity: 0; }
+}
+
+/* Save history slide-in animation */
+.ws-commit-slide-in {
+  animation: commit-slide-in 0.4s ease-out;
+}
+@keyframes commit-slide-in {
+  0% { transform: translateX(40px); opacity: 0; max-height: 0; }
+  50% { max-height: 40px; }
+  100% { transform: translateX(0); opacity: 1; max-height: 40px; }
 }
 
 .ws-save-flash {
@@ -2035,4 +2040,73 @@ header.hidden {
 .ship-step.ship-step-fail {
   opacity: 1;
   color: #ef4444;
+}
+
+/* ============================================================
+   Onboarding Tutorial
+   ============================================================ */
+
+.onboarding-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+}
+
+.onboarding-highlight {
+  position: fixed;
+  border: 2px solid var(--accent, #6366f1);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.4);
+  z-index: 10001;
+  pointer-events: none;
+  animation: onboard-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes onboard-pulse {
+  0%, 100% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.3); }
+  50% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.6); }
+}
+
+.onboarding-tooltip {
+  position: fixed;
+  background: var(--bg-elevated, #1e1e2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  padding: 16px 20px;
+  max-width: 320px;
+  z-index: 10002;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  animation: onboard-fade-in 0.3s ease-out;
+}
+
+@keyframes onboard-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.onboarding-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin-bottom: 6px;
+}
+
+.onboarding-text {
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-step {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  flex: 1;
 }
