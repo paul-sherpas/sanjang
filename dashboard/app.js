@@ -22,6 +22,29 @@ let currentWorkspace = null;
 /** @type {number|null} polling interval for workspace changes */
 let wsPollingInterval = null;
 
+const SHERPA_QUOTES = [
+  "요구사항 또 바뀌었댜... 뭐 그러려니 하쥬",
+  "'간단한 건데~' 그 말이 제일 무섭댜",
+  "CEO가 데모 전날 피드백 줬어유. 다 뜯으래유.",
+  "이거 금방 되쥬? 네... 산도 금방 오르쥬.",
+  "스펙 확정이랬는디... 또 바뀌었댜",
+  "우선순위 1이 열두 개여유. 산봉우리가 열두 개.",
+  "디자인 안 나왔는디 개발 먼저 하래유",
+  "어제 합의한 거 오늘 모른댜. 나도 모르겠댜.",
+  "v1인디 왜 v3 기능을 넣으래유",
+  "PRD 다섯 번째 바뀌는 중이여유. 난 여그 서있쥬.",
+  "아 그거 빼자고 한 거... 다시 넣는댜. 그러쥬 뭐.",
+  "고객이 원한댜. 근디 고객이 누구여.",
+  "MVP라며유. M이 자꾸 빠져유.",
+  "이번엔 진짜 마지막 수정이래유. 네 번째 마지막.",
+  "배포하면 쉬는 거 아니었어유?",
+  "'빨리 한번 해봐유' 3주째 하는 중이쥬.",
+  "피벗이래유. 하산 아니래유. 글쎄유.",
+  "개발 부채가 배낭보다 무겁댜. 그래도 가야쥬.",
+  "야근이여유? 셰르파는 원래 이러쥬 뭐.",
+  "롤백한 거 아무도 모르쥬? 나도 모른댜.",
+];
+
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
@@ -1280,7 +1303,7 @@ function renderBlocks(files) {
   }
   container.innerHTML = files.map(f => {
     const type = f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del';
-    return `<div class="ws-block ws-block-${type}" title="${f.path}"></div>`;
+    return `<div class="ws-block ws-block-${type}" title="${escHtml(f.path)}"></div>`;
   }).join('');
   container.classList.toggle('ws-blocks-wobble', files.length >= 5);
 }
@@ -1614,48 +1637,6 @@ window.togglePanel = function() {
 // ---------------------------------------------------------------------------
 
 
-async function loadSuggestions() {
-  const section = document.getElementById('portal-suggestions-section');
-  const list = document.getElementById('portal-suggestions');
-  if (!section || !list) return;
-
-  try {
-    const suggestions = await api('GET', '/api/suggestions');
-    if (!suggestions || suggestions.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-
-    // Exclude "recent" commits (noise) and deduplicate with "이어하기"
-    const workTitles = new Set([...playgrounds.values()].map(p => p.branch));
-    const filtered = suggestions
-      .filter(item => item.type !== 'recent')
-      .filter(item => !workTitles.has(item.action))
-      .slice(0, 5);
-
-    if (filtered.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-
-    const iconMap = { issue: '🔵', pr: '🟡' };
-    list.innerHTML = filtered.map(item => {
-      const icon = iconMap[item.type] || '⚪';
-      return `
-      <div class="portal-work-item">
-        <div class="portal-work-left">
-          <span class="portal-work-icon">${icon}</span>
-          <div>
-            <div class="portal-work-title">${escHtml(item.title)}</div>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-    section.style.display = '';
-  } catch {
-    section.style.display = 'none';
-  }
-}
 async function loadPortal() {
   const workList = document.getElementById('portal-work');
   if (!workList) return;
@@ -1864,6 +1845,284 @@ function showOnboarding() {
 }
 
 // ---------------------------------------------------------------------------
+// Sherpa Quote Rotation
+// ---------------------------------------------------------------------------
+
+function startSherpaQuotes() {
+  const el = document.getElementById('sherpa-quote');
+  if (!el) return;
+
+  // Shuffle array (Fisher-Yates)
+  let quotes = [...SHERPA_QUOTES];
+  for (let i = quotes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [quotes[i], quotes[j]] = [quotes[j], quotes[i]];
+  }
+
+  let idx = 0;
+  // Set initial random quote
+  el.textContent = quotes[idx];
+
+  setInterval(() => {
+    el.style.opacity = '0';
+    setTimeout(() => {
+      idx++;
+      if (idx >= quotes.length) {
+        // Reshuffle
+        for (let i = quotes.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [quotes[i], quotes[j]] = [quotes[j], quotes[i]];
+        }
+        idx = 0;
+      }
+      el.textContent = quotes[idx];
+      el.style.opacity = '1';
+    }, 500);
+  }, 8000);
+}
+
+// ---------------------------------------------------------------------------
+// Activity Trail
+// ---------------------------------------------------------------------------
+
+async function loadActivityTrail() {
+  const container = document.getElementById('activity-trail');
+  const section = document.getElementById('activity-trail-section');
+  if (!container || !section) return;
+
+  try {
+    const data = await api('GET', '/api/activity');
+    if (!data || !data.daily || data.daily.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    const days = data.daily;
+    const prs = data.mergedPrs || [];
+    const streak = data.streak || 0;
+    const totalCommits = days.reduce((s, d) => s + d.commits, 0);
+
+    // Calculate terrain heights
+    const maxCommits = Math.max(...days.map(d => d.commits), 1);
+    const svgW = 680, svgH = 180;
+    const ground = 150, ceiling = 35;
+    const dayW = (svgW - 40) / days.length; // 20px padding each side
+
+    // Map commits to Y coordinate (more commits = higher = lower Y)
+    const heights = days.map(d => {
+      if (d.commits === 0) return ground;
+      return ground - ((d.commits / maxCommits) * (ground - ceiling));
+    });
+
+    // Build stepped polyline points (pixel staircase)
+    let terrainPoints = `20,${ground} `;
+    heights.forEach((h, i) => {
+      const x = 20 + i * dayW;
+      const xEnd = 20 + (i + 1) * dayW;
+      terrainPoints += `${x},${h} ${xEnd},${h} `;
+    });
+    terrainPoints += `${20 + days.length * dayW},${ground}`;
+
+    // PR merge dates set for lookup
+    const prByDate = {};
+    prs.forEach(pr => {
+      const date = pr.mergedAt.split('T')[0];
+      if (!prByDate[date]) prByDate[date] = [];
+      prByDate[date].push(pr);
+    });
+
+    // Build pixel decorations
+    let decorations = '';
+
+    // Stars
+    const starPositions = [[45,8],[130,14],[220,6],[350,10],[480,5],[560,16],[640,8]];
+    starPositions.forEach(([x,y]) => {
+      decorations += `<rect x="${x}" y="${y}" width="2" height="2" fill="#fff" opacity="${0.2 + Math.random() * 0.3}"/>`;
+    });
+
+    // Snow on high peaks (top 20%)
+    const threshold = ceiling + (ground - ceiling) * 0.3;
+    heights.forEach((h, i) => {
+      if (h < threshold) {
+        const x = 20 + i * dayW + dayW / 2 - 3;
+        decorations += `<rect x="${x}" y="${h}" width="6" height="2" fill="rgba(255,255,255,0.2)"/>`;
+      }
+    });
+
+    // Trees on low terrain
+    heights.forEach((h, i) => {
+      if (h > ground - 30 && h < ground && days[i].commits > 0 && Math.random() > 0.7) {
+        const x = 20 + i * dayW + dayW / 2;
+        decorations += `
+          <rect x="${x}" y="${h - 8}" width="2" height="8" fill="#3d5a3d"/>
+          <rect x="${x - 2}" y="${h - 12}" width="6" height="4" fill="#4a7a4a"/>
+          <rect x="${x}" y="${h - 16}" width="2" height="4" fill="#5b8c5a"/>`;
+      }
+    });
+
+    // Tents on rest days (0 commits, not first/last)
+    heights.forEach((h, i) => {
+      if (days[i].commits === 0 && i > 0 && i < days.length - 1 && Math.random() > 0.5) {
+        const x = 20 + i * dayW + dayW / 2 - 4;
+        decorations += `
+          <rect x="${x + 3}" y="${ground - 8}" width="2" height="2" fill="#6b7394"/>
+          <rect x="${x + 1}" y="${ground - 6}" width="6" height="2" fill="#6b7394"/>
+          <rect x="${x}" y="${ground - 4}" width="8" height="2" fill="#4a5170"/>`;
+      }
+    });
+
+    // PR campfires + tooltip triggers
+    let prMarkers = '';
+    days.forEach((d, i) => {
+      const datePrs = prByDate[d.date];
+      if (datePrs && datePrs.length > 0) {
+        const x = 20 + i * dayW + dayW / 2 - 4;
+        const h = heights[i];
+        const tooltipText = datePrs.map(p => `#${p.number} ${p.title}`).join('\n');
+        prMarkers += `
+          <g class="pr-marker" data-tooltip="${tooltipText.replace(/"/g, '&quot;')}">
+            <rect x="${x}" y="${h - 4}" width="2" height="2" fill="#8B4513"/>
+            <rect x="${x + 4}" y="${h - 4}" width="2" height="2" fill="#8B4513"/>
+            <rect x="${x + 2}" y="${h - 8}" width="2" height="4" fill="#ff6600"/>
+            <rect x="${x}" y="${h - 10}" width="2" height="2" fill="#ffcc00"/>
+            <rect x="${x + 4}" y="${h - 12}" width="2" height="4" fill="#ff9900"/>
+            <rect x="${x + 2}" y="${h - 14}" width="2" height="4" fill="#ffcc00"/>
+            <circle cx="${x + 3}" cy="${h - 8}" r="6" fill="#ff9900" opacity="0.06"/>
+          </g>`;
+      }
+    });
+
+    // Coins on top 3 peaks
+    const peakIndices = heights
+      .map((h, i) => ({ h, i }))
+      .sort((a, b) => a.h - b.h)
+      .slice(0, 3);
+    peakIndices.forEach(({ h, i }) => {
+      const x = 20 + i * dayW + dayW / 2 - 3;
+      decorations += `
+        <rect x="${x}" y="${h - 10}" width="6" height="6" fill="#f59e0b" opacity="0.7"/>
+        <rect x="${x + 2}" y="${h - 8}" width="2" height="2" fill="#0a0c11"/>`;
+    });
+
+    // Flag on highest peak
+    const highest = peakIndices[0];
+    if (highest) {
+      const x = 20 + highest.i * dayW + dayW / 2;
+      decorations += `
+        <rect x="${x}" y="${highest.h}" width="2" height="14" fill="#f59e0b"/>
+        <polygon points="${x + 2},${highest.h} ${x + 8},${highest.h + 3} ${x + 2},${highest.h + 6}" fill="#f59e0b"/>`;
+    }
+
+    // Sherpa at today (last position)
+    const lastX = 20 + (days.length - 1) * dayW + dayW / 2 - 4;
+    const lastH = heights[heights.length - 1];
+    const sherpaY = lastH - 16;
+    const sherpa = `
+      <g transform="translate(${lastX}, ${sherpaY})">
+        <rect x="2" y="0" width="4" height="2" fill="#5b8c5a"/>
+        <rect x="0" y="2" width="8" height="2" fill="#5b8c5a"/>
+        <rect x="2" y="4" width="4" height="4" fill="#ffcc88"/>
+        <rect x="2" y="8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="0" y="8" width="2" height="2" fill="#e74c3c"/>
+        <rect x="6" y="8" width="2" height="4" fill="#8B6914"/>
+        <rect x="2" y="12" width="2" height="2" fill="#5b4a3a"/>
+        <rect x="4" y="12" width="2" height="2" fill="#5b4a3a"/>
+      </g>`;
+
+    // Week labels
+    let weekLabels = '';
+    const weekSize = 7;
+    for (let w = 0; w < Math.floor(days.length / weekSize); w++) {
+      const x = 20 + (w * weekSize + 3) * dayW;
+      const weeksAgo = Math.floor(days.length / weekSize) - w - 1;
+      const label = weeksAgo === 0 ? '이번 주' : `${weeksAgo}주 전`;
+      weekLabels += `<text x="${x}" y="170" font-size="8" fill="#4a5170" font-family="Outfit,sans-serif" text-anchor="middle">${label}</text>`;
+    }
+
+    // Pixel clouds
+    const clouds = `
+      <g opacity="0.08">
+        <rect x="80" y="20" width="4" height="4" fill="#fff"/>
+        <rect x="84" y="18" width="8" height="4" fill="#fff"/>
+        <rect x="88" y="16" width="4" height="4" fill="#fff"/>
+        <rect x="92" y="18" width="4" height="4" fill="#fff"/>
+        <rect x="76" y="22" width="24" height="4" fill="#fff"/>
+      </g>
+      <g opacity="0.06">
+        <rect x="420" y="14" width="4" height="4" fill="#fff"/>
+        <rect x="424" y="12" width="8" height="4" fill="#fff"/>
+        <rect x="432" y="14" width="4" height="4" fill="#fff"/>
+        <rect x="416" y="18" width="24" height="4" fill="#fff"/>
+      </g>`;
+
+    // PR tooltip container (CSS positioned)
+    const tooltip = `<div class="activity-tooltip" id="activity-tooltip" style="display:none;position:absolute;background:#1c2030;border:1px solid #2a2f42;border-radius:6px;padding:8px 12px;font-size:12px;color:#e4e8f0;pointer-events:none;white-space:nowrap;z-index:10;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>`;
+
+    const svg = `
+      <svg viewBox="0 0 ${svgW} ${svgH}" style="display:block;width:100%;" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="0" width="${svgW}" height="${svgH}" fill="#080a10"/>
+        ${clouds}
+        ${decorations}
+        <defs>
+          <linearGradient id="trailFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5b8c5a" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#5b8c5a" stop-opacity="0.03"/>
+          </linearGradient>
+        </defs>
+        <polygon fill="url(#trailFill)" points="${terrainPoints}"/>
+        <polyline fill="none" stroke="#5b8c5a" stroke-width="2" points="${terrainPoints.split(` ${20 + days.length * dayW},${ground}`)[0]}"/>
+        <line x1="16" y1="${ground}" x2="${svgW - 16}" y2="${ground}" stroke="#1c2030" stroke-width="1"/>
+        ${prMarkers}
+        ${sherpa}
+        ${weekLabels}
+      </svg>`;
+
+    const streakText = streak > 0 ? `🔥 연속 ${streak}일째 등반 중` : '⛺ 오늘은 쉬는 날';
+    const periodText = `최근 4주 · 커밋 ${totalCommits}개 · PR ${prs.length}개`;
+
+    container.innerHTML = `
+      <div style="position:relative;">
+        ${svg}
+        ${tooltip}
+      </div>
+      <div class="activity-info">
+        <div class="activity-streak">${streakText}</div>
+        <div class="activity-period">${periodText}</div>
+      </div>`;
+
+    // Add PR tooltip hover handlers
+    container.querySelectorAll('.pr-marker').forEach(marker => {
+      marker.style.cursor = 'pointer';
+      marker.addEventListener('mouseenter', (e) => {
+        const tip = document.getElementById('activity-tooltip');
+        if (!tip) return;
+        tip.innerHTML = marker.getAttribute('data-tooltip').split('\n').map(l => escHtml(l)).join('<br>');
+        tip.style.display = 'block';
+        const rect = marker.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        let left = rect.left - containerRect.left;
+        // Prevent overflow on right edge
+        const tipWidth = tip.offsetWidth;
+        if (left + tipWidth > containerRect.width) {
+          left = containerRect.width - tipWidth - 8;
+        }
+        if (left < 8) left = 8;
+        tip.style.left = left + 'px';
+        tip.style.top = (rect.top - containerRect.top - 40) + 'px';
+      });
+      marker.addEventListener('mouseleave', () => {
+        const tip = document.getElementById('activity-tooltip');
+        if (tip) tip.style.display = 'none';
+      });
+    });
+
+  } catch {
+    if (section) section.style.display = 'none';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 
@@ -1878,7 +2137,8 @@ async function init() {
   }
   renderAll();
   loadPortal();
-  loadSuggestions();
+  startSherpaQuotes();
+  loadActivityTrail();
   connectWs();
 
   // Show onboarding for first-time users

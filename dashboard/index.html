@@ -17,6 +17,44 @@
 
   <!-- Portal Home -->
   <div id="portal">
+    <!-- 베이스캠프 씬 -->
+    <div class="portal-section" id="basecamp-scene">
+      <div class="bc-scene">
+        <!-- Stars -->
+        <div class="bc-star twinkle" style="top:8%;left:12%"></div>
+        <div class="bc-star twinkle-slow" style="top:15%;left:30%"></div>
+        <div class="bc-star twinkle" style="top:5%;left:48%"></div>
+        <div class="bc-star twinkle-slow" style="top:20%;left:65%"></div>
+        <div class="bc-star twinkle" style="top:10%;left:80%"></div>
+        <div class="bc-star twinkle-slow" style="top:25%;left:92%"></div>
+        <div class="bc-star twinkle" style="top:18%;left:5%"></div>
+        <div class="bc-star twinkle-slow" style="top:6%;left:72%"></div>
+        <div class="bc-star twinkle" style="top:22%;left:42%"></div>
+        <div class="bc-star twinkle-slow" style="top:12%;left:55%"></div>
+
+        <!-- Mountains -->
+        <div class="bc-mountain bc-mountain-back"></div>
+        <div class="bc-mountain bc-mountain-front"></div>
+
+        <!-- Snow caps -->
+        <div class="bc-snow" style="bottom:64px;left:48%;width:12px"></div>
+        <div class="bc-snow" style="bottom:60px;left:50%;width:8px"></div>
+        <div class="bc-snow" style="bottom:56px;left:46%;width:4px"></div>
+
+        <!-- Campfire glow + campfire -->
+        <div class="bc-glow"></div>
+        <div class="bc-campfire"></div>
+
+        <!-- Sherpa -->
+        <div class="bc-sherpa"></div>
+
+        <!-- Speech bubble -->
+        <div class="bc-speech fade-in" id="sherpa-speech">
+          <span id="sherpa-quote">요구사항 또 바뀌었댜... 뭐 그러려니 하쥬</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 새로 시작 (핵심 액션, 맨 위) -->
     <div class="portal-section">
       <div class="portal-quickstart">
@@ -34,16 +72,15 @@
       <div id="portal-work" class="portal-work-list"></div>
     </div>
 
-    <!-- 추천 작업 (최대 5개, 이어하기와 중복 제거) -->
-    <div class="portal-section" id="portal-suggestions-section" style="display:none">
-      <h2 class="portal-section-title">이런 걸 해볼 수 있어요</h2>
-      <div id="portal-suggestions" class="portal-work-list"></div>
-    </div>
-
     <!-- 기존 캠프가 있으면 아래에 카드 그리드 표시 -->
     <div id="portal-camps-section" class="portal-section hidden">
       <h2 class="portal-section-title">캠프</h2>
       <div class="grid" id="grid"></div>
+    </div>
+
+    <!-- 활동 지형도 -->
+    <div class="portal-section" id="activity-trail-section" style="display:none">
+      <div id="activity-trail"></div>
     </div>
   </div>
 

@@ -392,10 +392,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       return res.status(400).send("Invalid port");
     }
 
-    // Find camp name by port
+    // Only allow proxying to known camp ports (prevent SSRF to arbitrary local services)
     const camps = getAll();
     const camp = camps.find(c => c.fePort === targetPort);
-    const campName = camp?.name ?? "unknown";
+    if (!camp) {
+      return res.status(403).send("이 포트는 활성 캠프가 아닙니다.");
+    }
+    const campName = camp.name;
 
     const targetPath = req.url || "/";
     const proxyReq = httpRequest(
@@ -1520,6 +1523,82 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
 
     res.json({ fixed: false, description: fix?.description ?? "자동으로 고칠 수 있는 문제를 찾지 못했습니다." });
+  });
+
+  // Activity feed (commit history, merged PRs, streak)
+  interface ActivityData {
+    daily: Array<{ date: string; commits: number }>;
+    mergedPrs: Array<{ number: number; title: string; mergedAt: string }>;
+    streak: number;
+  }
+
+  let activityCache: { data: ActivityData; ts: number } | null = null;
+  const ACTIVITY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  app.get("/api/activity", (_req: Request, res: Response) => {
+    if (activityCache && Date.now() - activityCache.ts < ACTIVITY_CACHE_TTL) {
+      return res.json(activityCache.data);
+    }
+
+    // --- daily commits (last 4 weeks) ---
+    const gitLog = spawnSync("git", ["log", "--since=4 weeks ago", "--format=%ad", "--date=short"], {
+      cwd: projectRoot,
+      stdio: "pipe",
+      encoding: "utf8",
+    });
+    const commitDates = (gitLog.status === 0 ? gitLog.stdout : "").trim().split("\n").filter(Boolean);
+
+    const countByDate = new Map<string, number>();
+    for (const d of commitDates) {
+      countByDate.set(d, (countByDate.get(d) ?? 0) + 1);
+    }
+
+    // Fill missing days in the 4-week window
+    const daily: Array<{ date: string; commits: number }> = [];
+    const now = new Date();
+    for (let i = 27; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      daily.push({ date: key, commits: countByDate.get(key) ?? 0 });
+    }
+
+    // --- merged PRs ---
+    let mergedPrs: Array<{ number: number; title: string; mergedAt: string }> = [];
+    const ghResult = spawnSync("gh", ["pr", "list", "--state", "merged", "--limit", "10", "--json", "number,title,mergedAt"], {
+      cwd: projectRoot,
+      stdio: "pipe",
+      encoding: "utf8",
+    });
+    if (ghResult.status === 0 && ghResult.stdout) {
+      try {
+        const parsed: Array<{ number: number; title: string; mergedAt: string }> = JSON.parse(ghResult.stdout);
+        mergedPrs = parsed;
+      } catch {
+        // malformed JSON — keep empty
+      }
+    }
+
+    // --- streak (consecutive days with commits, backward from today) ---
+    let streak = 0;
+    const todayStr = now.toISOString().slice(0, 10);
+    for (let i = 0; i <= 27; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      if ((countByDate.get(key) ?? 0) > 0) {
+        streak++;
+      } else if (key === todayStr) {
+        // Today having 0 commits is ok — streak can start from yesterday
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    const data: ActivityData = { daily, mergedPrs, streak };
+    activityCache = { data, ts: Date.now() };
+    res.json(data);
   });
 
   // SPA fallback
