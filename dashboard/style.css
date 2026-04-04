@@ -1831,7 +1831,7 @@ header.hidden {
   width: 2px;
   height: 2px;
   position: relative;
-  margin-left: 8px;
+  margin: 4px 16px 4px 12px;
   flex-shrink: 0;
 }
 /* Sherpa load levels — backpack grows with unsaved changes */
