@@ -991,6 +991,64 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
+  // GET /api/playgrounds/:name/commit-report/:hash — 특정 커밋의 변경 리포트
+  app.get(
+    "/api/playgrounds/:name/commit-report/:hash",
+    async (req: Request<{ name: string; hash: string }>, res: Response) => {
+      const { name, hash } = req.params;
+      if (!getOne(name)) return res.status(404).json({ error: "not found" });
+      try {
+        const wtPath = campPath(name);
+        // 해당 커밋의 diff (부모 대비)
+        const diffNames =
+          spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${hash}~1..${hash}`], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout?.trim() || "";
+
+        if (!diffNames)
+          return res.json({
+            files: [],
+            totalCount: 0,
+            byCategory: {},
+            warnings: [],
+            summary: null,
+            humanDescription: null,
+            categoryDetails: null,
+          });
+
+        const validStatuses = new Set<string>(["수정", "추가", "삭제", "새 파일"]);
+        const statusMap: Record<string, string> = { M: "수정", A: "새 파일", D: "삭제" };
+        const parsedFiles = diffNames.split("\n").map((line) => {
+          const [st, ...pathParts] = line.split("\t");
+          const mapped = statusMap[st || ""] || "수정";
+          return {
+            path: pathParts.join("\t"),
+            status: (validStatuses.has(mapped) ? mapped : "수정") as "수정" | "추가" | "삭제" | "새 파일",
+          };
+        });
+
+        let report = buildChangeReport(parsedFiles);
+
+        if (req.query.ai === "true") {
+          const diffStat =
+            spawnSync("git", ["-C", wtPath, "diff", "--stat", `${hash}~1..${hash}`], {
+              encoding: "utf8",
+              stdio: "pipe",
+            }).stdout || "";
+          const diff =
+            spawnSync("git", ["-C", wtPath, "diff", `${hash}~1..${hash}`], { encoding: "utf8", stdio: "pipe" })
+              .stdout || "";
+          report = generateReportSummary(diffStat, diff, report);
+        }
+
+        res.json(report);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
+
   app.post("/api/playgrounds/:name/ship", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const { message } = req.body ?? {};

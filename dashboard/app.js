@@ -1333,10 +1333,13 @@ function renderWorkspace(data) {
   const commitList = data.commits || [];
   if (commitList.length > 0) {
     actionsEl.innerHTML = commitList.map(c =>
-      `<div class="ws-commit-item">
-        <span class="ws-commit-msg">${escHtml(c.message)}</span>
-        <span class="ws-commit-date">${escHtml(c.date)}</span>
-        <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
+      `<div class="ws-commit-item" onclick="toggleCommitReport(this, '${escHtml(c.hash)}')" style="cursor:pointer">
+        <div class="ws-commit-header">
+          <span class="ws-commit-msg">${escHtml(c.message)}</span>
+          <span class="ws-commit-date">${escHtml(c.date)}</span>
+          <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="event.stopPropagation();revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
+        </div>
+        <div class="ws-commit-report" data-hash="${escHtml(c.hash)}"></div>
       </div>`
     ).join('');
   } else if (changes.count > 0) {
@@ -1547,6 +1550,46 @@ function updateQuestProgress(hasChanges, hasSaves) {
     stepSave.classList.add('ws-quest-active');
   }
 }
+
+window.toggleCommitReport = async function(el, hash) {
+  const reportEl = el.querySelector('.ws-commit-report');
+  if (!reportEl) return;
+
+  // 토글 — 이미 열려있으면 닫기
+  if (reportEl.classList.contains('open')) {
+    reportEl.classList.remove('open');
+    return;
+  }
+
+  // 로딩 표시
+  reportEl.classList.add('open');
+  reportEl.innerHTML = '<div class="ws-commit-report-loading">불러오는 중...</div>';
+
+  try {
+    const report = await api('GET', `/api/playgrounds/${currentWorkspace}/commit-report/${hash}?ai=true`);
+    const categoryNames = { ui: '🎨 화면', api: '⚙️ 서버', config: '🔧 설정', test: '🧪 테스트', docs: '📝 문서', other: '📦 기타' };
+    const details = report.categoryDetails || {};
+
+    if (report.totalCount === 0) {
+      reportEl.innerHTML = '<div class="ws-commit-report-empty">변경 내용 없음</div>';
+      return;
+    }
+
+    reportEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) => {
+      const items = details[cat];
+      const hasDetails = items && items.length > 0;
+      return `<div class="ws-commit-cat">
+        <span class="ws-commit-cat-label">${categoryNames[cat] || cat}</span>
+        ${hasDetails
+          ? items.map(item => `<div class="ws-commit-cat-item">${escHtml(item)}</div>`).join('')
+          : files.map(f => `<div class="ws-commit-cat-item">${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</div>`).join('')
+        }
+      </div>`;
+    }).join('');
+  } catch {
+    reportEl.innerHTML = '<div class="ws-commit-report-empty">불러오기 실패</div>';
+  }
+};
 
 let reportFetchTimer = null;
 function debounceReportFetch(campName) {
