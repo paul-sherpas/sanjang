@@ -1192,12 +1192,12 @@ function exitWorkspace() {
 }
 window.exitWorkspace = exitWorkspace;
 
-async function fetchAndRenderReport(campName) {
+async function fetchAndRenderReport(campName, withAi = false) {
   const section = document.getElementById('ws-report-section');
   if (!section) return;
 
   try {
-    const report = await api('GET', `/api/playgrounds/${campName}/change-report?ai=true`);
+    const report = await api('GET', `/api/playgrounds/${campName}/change-report${withAi ? '?ai=true' : ''}`);
 
     if (report.totalCount === 0) {
       if (lastReport && lastReport.summary) {
@@ -1538,7 +1538,7 @@ let reportFetchTimer = null;
 function debounceReportFetch(campName) {
   if (reportFetchTimer) clearTimeout(reportFetchTimer);
   reportFetchTimer = setTimeout(() => {
-    fetchAndRenderReport(campName);
+    fetchAndRenderReport(campName, true);
   }, 5000);
 }
 

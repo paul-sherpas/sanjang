@@ -20,7 +20,20 @@ export function categorizeFile(filePath: string): FileCategory {
   if (/^(test|tests|__tests__|__mocks__|fixtures)[/\\]/.test(lower)) return "test";
 
   // 2. ui
-  const uiExts = new Set([".css", ".scss", ".less", ".sass", ".styl", ".html", ".htm", ".svg", ".tsx", ".jsx", ".vue", ".svelte"]);
+  const uiExts = new Set([
+    ".css",
+    ".scss",
+    ".less",
+    ".sass",
+    ".styl",
+    ".html",
+    ".htm",
+    ".svg",
+    ".tsx",
+    ".jsx",
+    ".vue",
+    ".svelte",
+  ]);
   if (uiExts.has(ext)) return "ui";
   if (/[/\\](pages|views|components|layouts|styles|public)[/\\]/.test(lower)) return "ui";
   if (/^(pages|views|components|layouts|styles|public)[/\\]/.test(lower)) return "ui";
@@ -37,7 +50,18 @@ export function categorizeFile(filePath: string): FileCategory {
   if (/^(README|CHANGELOG|LICENSE|CONTRIBUTING)(\.|$)/i.test(name)) return "docs";
 
   // 5. config
-  const configPrefixes = ["package", "tsconfig", "jest.config", "vite.config", "next.config", "webpack.config", "biome", ".eslint", ".prettier", ".babel"];
+  const configPrefixes = [
+    "package",
+    "tsconfig",
+    "jest.config",
+    "vite.config",
+    "next.config",
+    "webpack.config",
+    "biome",
+    ".eslint",
+    ".prettier",
+    ".babel",
+  ];
   const nameLower = name.toLowerCase();
   if (configPrefixes.some((p) => nameLower.startsWith(p.toLowerCase()))) return "config";
   if (name.startsWith(".")) return "config";
@@ -98,9 +122,7 @@ export function detectWarnings(files: ChangeReportFile[]): ChangeReportWarning[]
  * Build a ChangeReport from raw file list (path + status).
  * summary and humanDescription are set to null — call generateReportSummary to enrich.
  */
-export function buildChangeReport(
-  rawFiles: { path: string; status: ChangeReportFile["status"] }[]
-): ChangeReport {
+export function buildChangeReport(rawFiles: { path: string; status: ChangeReportFile["status"] }[]): ChangeReport {
   const files: ChangeReportFile[] = rawFiles.map((f) => ({
     path: f.path,
     status: f.status,
@@ -130,11 +152,7 @@ export function buildChangeReport(
  * Enrich a ChangeReport with AI-generated summary and human description.
  * Tries `claude -p --model haiku` and falls back to category-based string.
  */
-export function generateReportSummary(
-  diffStat: string,
-  diff: string,
-  report: ChangeReport
-): ChangeReport {
+export function generateReportSummary(diffStat: string, diff: string, report: ChangeReport): ChangeReport {
   const categoryList = Object.keys(report.byCategory)
     .map((cat) => `${cat}: ${(report.byCategory[cat] ?? []).length}개`)
     .join(", ");
@@ -152,18 +170,17 @@ ${diffStat}
 변경 파일 (${report.totalCount}개):
 ${report.files.map((f) => `  ${f.status} ${f.path} [${f.category}]`).join("\n")}
 
-경고: ${report.warnings.map((w) => w.type).join(", ") || "없음"}`;
+경고: ${report.warnings.map((w) => w.type).join(", ") || "없음"}
+
+diff (일부):
+${diff.slice(0, 2000)}`;
 
   try {
-    const result = spawnSync(
-      "claude",
-      ["-p", "--model", "claude-haiku-4-5", "--output-format", "text"],
-      {
-        input: prompt,
-        encoding: "utf8",
-        timeout: 10000,
-      }
-    );
+    const result = spawnSync("claude", ["-p", "--model", "claude-haiku-4-5", "--output-format", "text"], {
+      input: prompt,
+      encoding: "utf8",
+      timeout: 10000,
+    });
 
     if (result.status === 0 && result.stdout) {
       const output = result.stdout.trim();

@@ -100,7 +100,7 @@ export function stopMainServer(): void {
   logs = [];
 }
 
-function detectMainPort(logLines: string[], fallbackPort: number, timeoutMs: number): Promise<number | null> {
+function detectMainPort(logLines: string[], _fallbackPort: number, timeoutMs: number): Promise<number | null> {
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const portRe = /https?:\/\/localhost:(\d+)/;

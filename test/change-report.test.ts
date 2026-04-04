@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  categorizeFile,
-  detectWarnings,
-  buildChangeReport,
-} from "../lib/engine/change-report.ts";
+import { buildChangeReport, categorizeFile, detectWarnings } from "../lib/engine/change-report.ts";
 import type { ChangeReportFile } from "../lib/types.ts";
 
 describe("categorizeFile", () => {
@@ -311,20 +307,13 @@ describe("detectWarnings", () => {
   });
 
   it("returns empty array for safe files", () => {
-    const files = [
-      file("src/utils/format.ts"),
-      file("lib/engine/naming.ts"),
-    ];
+    const files = [file("src/utils/format.ts"), file("lib/engine/naming.ts")];
     const warnings = detectWarnings(files);
     assert.equal(warnings.length, 0);
   });
 
   it("returns multiple warning types for mixed files", () => {
-    const files = [
-      file(".env"),
-      file("package.json"),
-      file("Dockerfile"),
-    ];
+    const files = [file(".env"), file("package.json"), file("Dockerfile")];
     const warnings = detectWarnings(files);
     const types = warnings.map((w) => w.type);
     assert.ok(types.includes("env"));
@@ -348,22 +337,18 @@ describe("buildChangeReport", () => {
       { path: "src/style.css", status: "추가" },
       { path: "src/api/users.ts", status: "새 파일" },
     ]);
-    assert.ok(report.byCategory["other"] !== undefined);
-    assert.ok(report.byCategory["ui"] !== undefined);
-    assert.ok(report.byCategory["api"] !== undefined);
+    assert.ok(report.byCategory.other !== undefined);
+    assert.ok(report.byCategory.ui !== undefined);
+    assert.ok(report.byCategory.api !== undefined);
   });
 
   it("attaches warnings to report", () => {
-    const report = buildChangeReport([
-      { path: ".env", status: "수정" },
-    ]);
+    const report = buildChangeReport([{ path: ".env", status: "수정" }]);
     assert.ok(report.warnings.some((w) => w.type === "env"));
   });
 
   it("sets summary and humanDescription to null", () => {
-    const report = buildChangeReport([
-      { path: "src/app.ts", status: "수정" },
-    ]);
+    const report = buildChangeReport([{ path: "src/app.ts", status: "수정" }]);
     assert.equal(report.summary, null);
     assert.equal(report.humanDescription, null);
   });
@@ -388,9 +373,7 @@ describe("buildChangeReport", () => {
   });
 
   it("preserves file status", () => {
-    const report = buildChangeReport([
-      { path: "src/app.ts", status: "삭제" },
-    ]);
+    const report = buildChangeReport([{ path: "src/app.ts", status: "삭제" }]);
     assert.equal(report.files[0]?.status, "삭제");
   });
 });

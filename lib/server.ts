@@ -12,10 +12,10 @@ import { buildChangeReport, generateReportSummary } from "./engine/change-report
 import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
 import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
+import { getMainServerState, startMainServer, stopMainServer } from "./engine/main-server.ts";
 import { aiSlugify, slugify } from "./engine/naming.ts";
 import { allocate, scanPorts, setPortConfig } from "./engine/ports.ts";
 import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
-import { getMainServerState, startMainServer, stopMainServer } from "./engine/main-server.ts";
 import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./engine/process.ts";
 import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
 import { generatePrDescription } from "./engine/smart-pr.ts";
@@ -971,14 +971,16 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
       // AI 요약은 ?ai=true 일 때만 (비용 절약)
       if (req.query.ai === "true") {
-        const diffStat = spawnSync("git", ["-C", wtPath, "diff", "--stat"], {
-          encoding: "utf8",
-          stdio: "pipe",
-        }).stdout || "";
-        const diff = spawnSync("git", ["-C", wtPath, "diff"], {
-          encoding: "utf8",
-          stdio: "pipe",
-        }).stdout || "";
+        const diffStat =
+          spawnSync("git", ["-C", wtPath, "diff", "--stat"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout || "";
+        const diff =
+          spawnSync("git", ["-C", wtPath, "diff"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout || "";
         report = generateReportSummary(diffStat, diff, report);
       }
 
@@ -1080,25 +1082,32 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           try {
             const base = pg.baseCommit;
             if (base) {
-              const diffFiles = spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${base}..HEAD`], {
-                encoding: "utf8", stdio: "pipe"
-              }).stdout?.trim() || "";
+              const diffFiles =
+                spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${base}..HEAD`], {
+                  encoding: "utf8",
+                  stdio: "pipe",
+                }).stdout?.trim() || "";
               if (diffFiles) {
-                const parsedFiles = diffFiles.split("\n").map(line => {
+                const parsedFiles = diffFiles.split("\n").map((line) => {
                   const [st, ...pathParts] = line.split("\t");
                   return {
                     path: pathParts.join("\t"),
-                    status: (st === "M" ? "수정" : st === "D" ? "삭제" : st === "A" ? "추가" : "수정") as "수정" | "추가" | "삭제" | "새 파일"
+                    status: (st === "M" ? "수정" : st === "D" ? "삭제" : st === "A" ? "추가" : "수정") as
+                      | "수정"
+                      | "추가"
+                      | "삭제"
+                      | "새 파일",
                   };
                 });
                 const shipReport = buildChangeReport(parsedFiles);
                 if (shipReport.warnings.length > 0) {
-                  reportWarnings = "\n\n### ⚠️ 주의사항\n" +
-                    shipReport.warnings.map(w => `- ${w.message}`).join("\n");
+                  reportWarnings = "\n\n### ⚠️ 주의사항\n" + shipReport.warnings.map((w) => `- ${w.message}`).join("\n");
                 }
               }
             }
-          } catch { /* non-critical */ }
+          } catch {
+            /* non-critical */
+          }
 
           // Try Claude for rich PR body, fallback to simple
           const claudeCheck = spawnSync("which", ["claude"], { stdio: "pipe" });
