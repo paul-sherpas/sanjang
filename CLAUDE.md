@@ -1,6 +1,13 @@
 # Sanjang
 
-바이브코더를 위한 로컬 개발 환경 매니저. Git worktree 기반 캠프 관리.
+바이브코더를 위한 AI 개발 환경 에이전트. Git worktree 기반 캠프 관리 + 자가 치유 + 스마트 어시스턴트.
+
+## Design Principles
+
+- **관찰 > 예측**: 포트를 미리 정하지 않고 stdout에서 감지. config를 추측하지 않고 프로젝트를 분석.
+- **자가 치유**: 에러 → 패턴 매칭 → 자동 수정 → 재시작. 사용자에게 에러를 보여주기 전에 고침.
+- **인간 언어**: 포트, 브랜치, 워크트리 등 개발 용어를 숨김. "열기", "준비 중", "문제 발생"으로 표현.
+- **에이전트 위임**: 사용자가 이해할 필요 없는 건 AI가 처리 (PR 설명, 작업 제안, config 수정).
 
 ## Architecture
 
@@ -19,7 +26,12 @@ lib/engine/
   naming.ts       → 한국어→영어 slugify
   snapshot.ts     → git stash 기반 스냅샷
   pr.ts           → PR 생성 프롬프트/본문 빌드
+  smart-pr.ts     → AI PR 설명 생성 (claude -p 또는 fallback)
   conflict.ts     → git 충돌 감지
+  smart-init.ts   → 프로젝트 깊이 분석 (.env 스캔, 이슈 감지)
+  self-heal.ts    → 에러 패턴 매칭 → 자동 수정 → 재시작
+  suggest.ts      → 작업 제안 (이슈, PR, 최근 활동 조합)
+  config-hotfix.ts → sanjang.config.js 자동 수정
   diagnostics.ts  → 캠프 상태 진단
   warp.ts         → Warp 터미널 감지/열기
 dashboard/
