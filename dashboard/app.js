@@ -1334,7 +1334,8 @@ function renderWorkspace(data) {
   if (commitList.length > 0) {
     actionsEl.innerHTML = commitList.map(c =>
       `<details class="ws-commit-item" data-hash="${escHtml(c.hash)}">
-        <summary class="ws-commit-header">
+        <summary class="ws-commit-summary">
+          <span class="ws-commit-arrow">▶</span>
           <span class="ws-commit-msg">${escHtml(c.message)}</span>
           <span class="ws-commit-date">${escHtml(c.date)}</span>
           <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="event.stopPropagation();event.preventDefault();revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>

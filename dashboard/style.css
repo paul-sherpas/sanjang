@@ -2190,19 +2190,19 @@ header.hidden {
 .ws-report-saved-desc { font-size: 13px; color: var(--text-muted); }
 
 /* Commit report (details/summary dropdown) */
-details.ws-commit-item { border-radius: 6px; padding: 6px 8px; }
-details.ws-commit-item:hover { background: var(--surface); }
-details.ws-commit-item > summary { display: flex; align-items: center; gap: 4px; cursor: pointer; list-style: none; }
-details.ws-commit-item > summary::-webkit-details-marker { display: none; }
-details.ws-commit-item > summary::before { content: '▶'; font-size: 12px; color: var(--text); width: 16px; flex-shrink: 0; transition: transform 0.15s; }
-details.ws-commit-item[open] > summary::before { content: '▼'; }
-.ws-commit-report { padding: 8px 0 4px 12px; font-size: 12px; }
-.ws-commit-report-loading, .ws-commit-report-empty { color: var(--text-muted); font-size: 12px; padding: 4px 0; }
-.ws-commit-cat { margin-bottom: 4px; }
+details.ws-commit-item { border-radius: 6px; margin-bottom: 4px; }
+details.ws-commit-item > summary.ws-commit-summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 6px 8px; border-radius: 6px; }
+details.ws-commit-item > summary.ws-commit-summary::-webkit-details-marker { display: none; }
+details.ws-commit-item > summary.ws-commit-summary:hover { background: var(--surface); }
+.ws-commit-arrow { font-size: 10px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s; display: inline-block; }
+details.ws-commit-item[open] .ws-commit-arrow { transform: rotate(90deg); }
+.ws-commit-report { margin: 0 8px 8px 8px; padding: 10px 12px; background: var(--surface); border-radius: 6px; font-size: 12px; }
+.ws-commit-report-loading, .ws-commit-report-empty { color: var(--text-muted); }
+.ws-commit-cat { margin-bottom: 6px; }
 .ws-commit-cat:last-child { margin-bottom: 0; }
-.ws-commit-cat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
-.ws-commit-cat-item { color: var(--text-muted); padding-left: 10px; position: relative; line-height: 1.4; }
-.ws-commit-cat-item::before { content: '·'; position: absolute; left: 2px; }
+.ws-commit-cat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 2px; }
+.ws-commit-cat-item { color: var(--text-muted); padding-left: 12px; position: relative; line-height: 1.5; }
+.ws-commit-cat-item::before { content: '•'; position: absolute; left: 3px; color: var(--text-muted); }
 
 /* Split-view compare */
 .ws-preview-container { position: relative; flex: 1; display: flex; }
