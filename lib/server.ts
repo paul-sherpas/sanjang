@@ -15,6 +15,7 @@ import { buildDiagnostics } from "./engine/diagnostics.ts";
 import { aiSlugify, slugify } from "./engine/naming.ts";
 import { allocate, scanPorts, setPortConfig } from "./engine/ports.ts";
 import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
+import { getMainServerState, startMainServer, stopMainServer } from "./engine/main-server.ts";
 import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./engine/process.ts";
 import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
 import { generatePrDescription } from "./engine/smart-pr.ts";
@@ -419,10 +420,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     // Only allow proxying to known camp ports (prevent SSRF to arbitrary local services)
     const camps = getAll();
     const camp = camps.find((c) => c.fePort === targetPort);
-    if (!camp) {
+    const mainState = getMainServerState();
+    const isMainPort = mainState.status === "running" && mainState.port === targetPort;
+
+    if (!camp && !isMainPort) {
       return res.status(403).send("이 포트는 활성 캠프가 아닙니다.");
     }
-    const campName = camp.name;
+    const campName = camp?.name ?? "__main__";
 
     const targetPath = req.url || "/";
     const proxyReq = httpRequest(
@@ -1646,6 +1650,33 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   let activityCache: { data: ActivityData; ts: number } | null = null;
   const ACTIVITY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // GET /api/compare/status — main 서버 상태
+  app.get("/api/compare/status", (_req: Request, res: Response) => {
+    res.json(getMainServerState());
+  });
+
+  // POST /api/compare/start — main 서버 시작
+  app.post("/api/compare/start", async (_req: Request, res: Response) => {
+    const mainState = getMainServerState();
+    if (mainState.status === "running") {
+      return res.json(mainState);
+    }
+    try {
+      await startMainServer(projectRoot, config, (port) => {
+        broadcast({ type: "compare-ready", data: { port } });
+      });
+      res.json(getMainServerState());
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // POST /api/compare/stop — main 서버 중지
+  app.post("/api/compare/stop", (_req: Request, res: Response) => {
+    stopMainServer();
+    res.json({ ok: true });
+  });
+
   app.get("/api/activity", (_req: Request, res: Response) => {
     if (activityCache && Date.now() - activityCache.ts < ACTIVITY_CACHE_TTL) {
       return res.json(activityCache.data);
@@ -1746,6 +1777,7 @@ export async function startServer(projectRoot: string, options: CreateAppOptions
     for (const [, w] of watchers) w.stop();
     watchers.clear();
     stopAllCamps();
+    stopMainServer();
     server.close(() => process.exit(0));
     // Force exit after 10s if cleanup hangs
     setTimeout(() => process.exit(1), 10_000);
