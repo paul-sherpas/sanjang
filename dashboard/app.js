@@ -1765,7 +1765,7 @@ const onboardingSteps = [
   {
     target: '#quickstart-input',
     title: '캠프 만들기',
-    text: '뭘 하고 싶은지 입력하면 AI가 알���서 캠프를 만들어요.',
+    text: '하고 싶은 걸 입력하면 AI가 캠프를 자동으로 만들어줘요.',
     position: 'bottom',
   },
   {
@@ -1778,7 +1778,7 @@ const onboardingSteps = [
   {
     target: '#ws-save-btn',
     title: '세이브하기',
-    text: '변경���항이 있으면 세이브 버튼으로 저장해요. 게임 세이브처럼요!',
+    text: '변경사항이 있으면 세이브 버튼으로 저장해요. 게임 세이브처럼요!',
     position: 'left',
     waitForWorkspace: true,
   },
