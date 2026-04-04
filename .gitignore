@@ -9,4 +9,4 @@ state.json
 docs/superpowers/
 .playwright-mcp/
 sanjang.config.js
-.claude/reloop*
+.claude/

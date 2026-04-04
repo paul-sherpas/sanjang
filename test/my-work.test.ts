@@ -81,13 +81,15 @@ function createMockProject() {
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
-const TEST_PORT = 14568;
+let TEST_PORT = 0;
 
 before(async () => {
   projectRoot = createMockProject();
-  const result = await createApp(projectRoot, { port: TEST_PORT });
+  const result = await createApp(projectRoot, { port: 0 });
   server = result.server;
-  await new Promise<void>((resolve) => server.listen(TEST_PORT, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  TEST_PORT = typeof addr === "object" && addr ? addr.port : 0;
   baseUrl = `http://127.0.0.1:${TEST_PORT}`;
 });
 

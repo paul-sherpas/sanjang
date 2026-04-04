@@ -17,6 +17,9 @@
     "simple-git": "^3.27.0",
     "ws": "^8.18.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

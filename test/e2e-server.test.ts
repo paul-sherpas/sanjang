@@ -106,19 +106,21 @@ function createMockProject(opts: MockProjectOptions = {}): MockProject {
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
-const TEST_PORT = 14567; // unlikely to conflict
+let TEST_PORT = 0; // dynamic — assigned by OS
 
 before(async () => {
   const mock = createMockProject({
     devPort: 13999,
     portFlag: null, // simulates SMPLY-like config where port is fixed
-    devCommand: `node -e "require('http').createServer((_,r)=>{r.end('ok')}).listen(13999)"`,
+    devCommand: `node -e "const s=require('http').createServer((_,r)=>{r.end('ok')});s.listen(13999,()=>console.log('Local: http://localhost:13999/'))"`,
   });
   projectRoot = mock.root;
 
-  const result = await createApp(projectRoot, { port: TEST_PORT });
+  const result = await createApp(projectRoot, { port: 0 });
   server = result.server;
-  await new Promise<void>((resolve) => server.listen(TEST_PORT, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  TEST_PORT = typeof addr === "object" && addr ? addr.port : 0;
   baseUrl = `http://127.0.0.1:${TEST_PORT}`;
 });
 

@@ -2,6 +2,49 @@
 
 바이브코더를 위한 로컬 개발 환경 매니저. Git worktree 기반 캠프 관리.
 
+## Architecture
+
+```
+bin/sanjang.js    → .ts wrapper (npx 엔트리포인트)
+bin/sanjang.ts    → CLI (init, help, start)
+lib/server.ts     → Express + WebSocket 대시보드 서버 (~900줄, 가장 큰 파일)
+lib/config.ts     → sanjang.config.js 로드/생성/프레임워크 감지
+lib/types.ts      → 모든 인터페이스 중앙 관리
+lib/engine/
+  state.ts        → 캠프 상태 JSON 파일 관리
+  ports.ts        → 포트 할당/충돌 감지
+  process.ts      → dev 서버 프로세스 관리 + stdout 포트 감지
+  cache.ts        → node_modules 캐시 (빌드/적용/검증)
+  worktree.ts     → git worktree 생성/삭제/브랜치 목록
+  naming.ts       → 한국어→영어 slugify
+  snapshot.ts     → git stash 기반 스냅샷
+  pr.ts           → PR 생성 프롬프트/본문 빌드
+  conflict.ts     → git 충돌 감지
+  diagnostics.ts  → 캠프 상태 진단
+  warp.ts         → Warp 터미널 감지/열기
+dashboard/
+  index.html      → SPA 대시보드 (브라우저 JS, TS 마이그레이션 제외)
+  app.js          → 대시보드 로직
+  style.css       → 스타일
+```
+
+## Dev commands
+
+```bash
+npm test              # 128 tests (node --experimental-transform-types)
+npm run typecheck     # tsc --noEmit --strict
+npm run lint          # biome check
+node bin/sanjang.js   # 로컬 실행
+```
+
+## Key decisions
+
+- TypeScript strict mode, zero any, no build step (node --experimental-transform-types)
+- Import 확장자는 .ts (strip-types가 .js→.ts resolve 안 함)
+- portFlag: null 인 프레임워크는 stdout에서 실제 포트를 파싱 (process.ts detectPortFromStdout)
+- dashboard/는 브라우저 직접 실행이므로 JS 유지
+- 캠프 최대 7개 (MAX_CAMPS), 포트는 슬롯 기반 할당
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

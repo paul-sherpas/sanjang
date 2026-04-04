@@ -4,14 +4,14 @@
 export default {
   // 프론트엔드 개발 서버
   dev: {
-    command: 'npm run dev',
-    port: 3000,
-    portFlag: '--port',
-    cwd: '.',
-    env: {},
+    command: 'npm run dev',    // 실행 명령
+    port: 3000,                // 기본 포트 (portFlag가 null이면 이 포트로 감지)
+    portFlag: '--port',        // 포트 오버라이드 플래그 (null이면 stdout에서 자동 감지)
+    cwd: '.',                  // worktree 기준 상대 경로
+    env: {},                   // 추가 환경변수
   },
 
-  // (선택) 설치 명령 — 캠프 생성 시 자동 실행
+  // (선택) 설치 명령 — 캠프 생성 시 자동 실행 (캐시 미스 시)
   // setup: 'npm install',
 
   // (선택) 복사할 파일 — gitignored 파일을 메인에서 복사
@@ -24,7 +24,7 @@ export default {
   //   healthCheck: '/health',
   // },
 
-  // (선택) 포트 범위
+  // (선택) 포트 범위 — 캠프별 포트 슬롯 할당
   // ports: {
   //   fe: { base: 3000, slots: 8 },
   //   be: { base: 8000, slots: 8 },
