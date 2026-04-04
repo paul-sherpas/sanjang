@@ -145,54 +145,79 @@ export function buildChangeReport(rawFiles: { path: string; status: ChangeReport
     warnings,
     summary: null,
     humanDescription: null,
+    categoryDetails: null,
   };
 }
 
 /**
- * Enrich a ChangeReport with AI-generated summary and human description.
- * Tries `claude -p --model haiku` and falls back to category-based string.
+ * Enrich a ChangeReport with AI-generated category-level descriptions.
+ * Each category gets human-readable bullet points explaining what changed.
+ * Tries `claude -p --model haiku` and falls back to file-based summary.
  */
 export function generateReportSummary(diffStat: string, diff: string, report: ChangeReport): ChangeReport {
+  const categoryNames: Record<string, string> = {
+    ui: "화면",
+    api: "서버/API",
+    config: "설정",
+    test: "테스트",
+    docs: "문서",
+    other: "기타",
+  };
+
   const categoryList = Object.keys(report.byCategory)
-    .map((cat) => `${cat}: ${(report.byCategory[cat] ?? []).length}개`)
+    .map((cat) => `${categoryNames[cat] || cat}: ${(report.byCategory[cat] ?? []).length}개`)
     .join(", ");
 
-  const fallbackSummary = `총 ${report.totalCount}개 파일 변경 (${categoryList})`;
+  const fallbackSummary = `${categoryList} 변경`;
 
-  // Try AI summary via claude CLI
-  const prompt = `다음 git diff 통계와 변경 파일 목록을 분석하여 JSON으로 응답하세요.
-반드시 다음 형식의 JSON만 응답하세요 (다른 텍스트 없이):
-{"summary": "한 줄 요약 (50자 이내)", "description": "개발자용 변경 내용 설명 (100자 이내)"}
+  // Build per-category diff sections for the prompt
+  const categoryDiffSections = Object.entries(report.byCategory)
+    .map(([cat, files]) => {
+      const fileList = files.map((f) => `  ${f.status} ${f.path}`).join("\n");
+      return `[${categoryNames[cat] || cat}]\n${fileList}`;
+    })
+    .join("\n\n");
 
-diff stat:
-${diffStat}
+  const prompt = `너는 비개발자에게 코드 변경사항을 설명하는 도우미야.
+아래 git diff를 분석하고, 카테고리별로 "실제로 뭐가 바뀌었는지"를 설명해.
 
-변경 파일 (${report.totalCount}개):
-${report.files.map((f) => `  ${f.status} ${f.path} [${f.category}]`).join("\n")}
+규칙:
+- 파일명이 아니라 사용자 관점에서 뭐가 바뀌었는지 설명 (예: "로그인 버튼이 보라색으로 바뀌었어요")
+- 각 항목은 한국어, '~했어요/~됐어요' 체, 한 줄
+- 새 파일이면 "추가됐어요", 수정이면 구체적으로 뭐가 바뀌었는지
 
-경고: ${report.warnings.map((w) => w.type).join(", ") || "없음"}
+카테고리별 파일:
+${categoryDiffSections}
 
-diff (일부):
-${diff.slice(0, 2000)}`;
+diff:
+${diff.slice(0, 4000)}
+
+JSON으로만 응답해 (다른 텍스트 없이):
+{"summary": "전체 한 줄 요약 (30자 이내)", "categories": {"ui": ["설명1", "설명2"], "api": ["설명1"], ...}}
+
+categories의 키는 반드시 다음 중 하나: ${Object.keys(report.byCategory).join(", ")}`;
 
   try {
     const result = spawnSync("claude", ["-p", "--model", "claude-haiku-4-5", "--output-format", "text"], {
       input: prompt,
       encoding: "utf8",
-      timeout: 10000,
+      timeout: 15_000,
     });
 
     if (result.status === 0 && result.stdout) {
       const output = result.stdout.trim();
-      // Extract JSON from output (may have surrounding text)
-      const jsonMatch = output.match(/\{[\s\S]*"summary"[\s\S]*"description"[\s\S]*\}/);
+      const jsonMatch = output.match(/\{[\s\S]*"summary"[\s\S]*"categories"[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as { summary?: string; description?: string };
-        if (parsed.summary && parsed.description) {
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          summary?: string;
+          categories?: Record<string, string[]>;
+        };
+        if (parsed.summary && parsed.categories) {
           return {
             ...report,
             summary: parsed.summary,
-            humanDescription: parsed.description,
+            humanDescription: null,
+            categoryDetails: parsed.categories,
           };
         }
       }
@@ -201,9 +226,19 @@ ${diff.slice(0, 2000)}`;
     // Fall through to fallback
   }
 
+  // Fallback: 파일 기반 설명 생성
+  const fallbackDetails: Record<string, string[]> = {};
+  for (const [cat, files] of Object.entries(report.byCategory)) {
+    fallbackDetails[cat] = files.map((f) => {
+      const name = f.path.split("/").pop() || f.path;
+      return f.status === "새 파일" ? `${name} 파일이 추가됐어요` : `${name} 파일이 수정됐어요`;
+    });
+  }
+
   return {
     ...report,
     summary: fallbackSummary,
-    humanDescription: fallbackSummary,
+    humanDescription: null,
+    categoryDetails: fallbackDetails,
   };
 }

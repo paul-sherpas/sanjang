@@ -148,4 +148,5 @@ export interface ChangeReport {
   warnings: ChangeReportWarning[];
   summary: string | null;
   humanDescription: string | null;
+  categoryDetails: Record<string, string[]> | null; // 카테고리별 변경 내용 설명
 }

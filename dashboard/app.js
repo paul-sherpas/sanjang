@@ -1245,12 +1245,25 @@ async function fetchAndRenderReport(campName, withAi = false) {
 
     const categoryNames = { ui: '🎨 화면', api: '⚙️ 서버', config: '🔧 설정', test: '🧪 테스트', docs: '📝 문서', other: '📦 기타' };
     const categoriesEl = document.getElementById('ws-report-categories');
-    categoriesEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) =>
-      `<div class="ws-report-cat">
-        <span class="ws-report-cat-label">${categoryNames[cat] || cat}</span>
-        <span class="ws-report-cat-count">${files.length}개</span>
-      </div>`
-    ).join('');
+    const details = report.categoryDetails || {};
+    categoriesEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) => {
+      const items = details[cat];
+      const hasDetails = items && items.length > 0;
+      return `<div class="ws-report-cat-group">
+        <div class="ws-report-cat-header">
+          <span class="ws-report-cat-label">${categoryNames[cat] || cat}</span>
+          <span class="ws-report-cat-count">${files.length}</span>
+        </div>
+        ${hasDetails
+          ? `<ul class="ws-report-cat-items">${items.map(item =>
+              `<li>${escHtml(item)}</li>`
+            ).join('')}</ul>`
+          : `<ul class="ws-report-cat-items">${files.map(f =>
+              `<li>${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</li>`
+            ).join('')}</ul>`
+        }
+      </div>`;
+    }).join('');
 
   } catch {
     section.style.display = 'none';

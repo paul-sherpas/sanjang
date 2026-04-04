@@ -959,6 +959,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           warnings: [],
           summary: null,
           humanDescription: null,
+          categoryDetails: null,
         });
       }
 
