@@ -10,7 +10,7 @@ import { loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
 import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
-import { slugify } from "./engine/naming.ts";
+import { aiSlugify, slugify } from "./engine/naming.ts";
 import { allocate, scanPorts, setPortConfig } from "./engine/ports.ts";
 import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
 import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./engine/process.ts";
@@ -1086,7 +1086,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     const { description } = req.body ?? {};
     if (!description?.trim()) return res.status(400).json({ error: "뭘 하고 싶은지 입력해주세요." });
 
-    const slug = slugify(description.trim());
+    const slug = aiSlugify(description.trim()) ?? slugify(description.trim());
     const name = slug.slice(0, 30);
     const branch = `camp/${slug}`;
 

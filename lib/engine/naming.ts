@@ -1,3 +1,25 @@
+import { spawnSync } from "node:child_process";
+
+/**
+ * Generate a short English slug from a task description using AI.
+ * Returns null if AI is unavailable — caller should fallback to slugify().
+ */
+export function aiSlugify(description: string): string | null {
+  try {
+    const result = spawnSync(
+      "claude",
+      ["-p", "--model", "haiku", `Convert this task description to a short kebab-case English slug (2-4 words, max 30 chars, lowercase, no explanation, just the slug):\n\n"${description}"`],
+      { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
+    );
+    if (result.status !== 0) return null;
+    const slug = (result.stdout ?? "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/^-+|-+$/g, "");
+    if (!slug || slug.length > 30) return null;
+    return slug;
+  } catch {
+    return null;
+  }
+}
+
 // Korean → romanized mappings for common dev terms
 const KOREAN_MAP: Record<string, string> = {
   로그인: "login",

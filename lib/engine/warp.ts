@@ -1,7 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 
 interface WarpDetectResult {
   installed: boolean;
@@ -13,10 +11,6 @@ interface WarpOpenResult {
   path?: string;
 }
 
-function launchConfigDir(): string {
-  return join(homedir(), ".warp", "launch_configurations");
-}
-
 /**
  * Detect if Warp terminal is installed.
  */
@@ -25,43 +19,10 @@ export function detectWarp(): WarpDetectResult {
   return { installed };
 }
 
-function launchConfigName(campName: string): string {
-  return `sanjang-${campName}`;
-}
-
-function launchConfigPath(campName: string): string {
-  return join(launchConfigDir(), `${launchConfigName(campName)}.yaml`);
-}
-
 /**
- * Write a Warp launch configuration YAML for a camp.
- */
-export function writeLaunchConfig(campName: string, worktreePath: string): void {
-  mkdirSync(launchConfigDir(), { recursive: true });
-  const yaml = `---
-name: ${launchConfigName(campName)}
-windows:
-  - tabs:
-      - title: "🏕️ ${campName}"
-        layout:
-          cwd: ${worktreePath}
-`;
-  writeFileSync(launchConfigPath(campName), yaml, "utf8");
-}
-
-/**
- * Remove the Warp launch configuration for a camp.
- */
-export function removeLaunchConfig(campName: string): void {
-  const configPath = launchConfigPath(campName);
-  if (existsSync(configPath)) {
-    rmSync(configPath);
-  }
-}
-
-/**
- * Open a named Warp tab for a camp using launch configuration.
- * Creates the launch config if needed, then opens via warp:// URL scheme.
+ * Open a Warp tab at the given worktree path.
+ * Opens as a new tab in the existing Warp window (not a new window).
+ * The tab title naturally shows the directory name (= camp name).
  */
 export function openWarpTab(campName: string, worktreePath: string): WarpOpenResult {
   const { installed } = detectWarp();
@@ -69,13 +30,18 @@ export function openWarpTab(campName: string, worktreePath: string): WarpOpenRes
     return { opened: false, terminal: null, path: worktreePath };
   }
 
-  writeLaunchConfig(campName, worktreePath);
-
-  const name = launchConfigName(campName);
-  const result = spawnSync("open", [`warp://launch/${name}`], { stdio: "pipe" });
+  // open -a Warp {path} → opens tab in existing window with dir name as title
+  const result = spawnSync("open", ["-a", "Warp", worktreePath], { stdio: "pipe" });
 
   return {
     opened: result.status === 0,
     terminal: "warp",
   };
+}
+
+/**
+ * No-op cleanup (launch config removed — using open -a instead).
+ */
+export function removeLaunchConfig(_campName: string): void {
+  // Intentionally empty — kept for API compatibility with server.ts
 }
