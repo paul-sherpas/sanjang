@@ -22,6 +22,9 @@ let currentWorkspace = null;
 /** @type {number|null} polling interval for workspace changes */
 let wsPollingInterval = null;
 
+/** @type {object|null} 마지막 리포트 캐시 — 세이브 후 축소 표시용 */
+let lastReport = null;
+
 const SHERPA_QUOTES = [
   "요구사항 또 바뀌었댜... 뭐 그러려니 하쥬",
   "'간단한 건데~' 그 말이 제일 무섭댜",
@@ -218,6 +221,7 @@ function handleWsMessage(msg) {
     case 'playground-saved': {
       if (!name) break;
       toast(`💾 세이브됨: ${data?.message || ''}`, 'success');
+      if (currentWorkspace === name) transitionReportToSaved();
       break;
     }
 
@@ -225,6 +229,7 @@ function handleWsMessage(msg) {
       if (!name) break;
       toast('💾 오토세이브 완료', 'success');
       if (currentWorkspace === name) {
+        transitionReportToSaved();
         api('POST', `/api/playgrounds/${name}/enter`).then(renderWorkspace).catch(() => {});
       }
       break;
@@ -263,8 +268,8 @@ function handleWsMessage(msg) {
           </div>`;
         }).join('');
         renderBlocks(data.files);
-        // Debounced AI summary fetch
-        debounceSummaryFetch(name);
+        // Debounced AI report fetch
+        debounceReportFetch(name);
       }
 
       updateChangeSummary(data.count, data.ts);
@@ -1164,6 +1169,87 @@ function exitWorkspace() {
 }
 window.exitWorkspace = exitWorkspace;
 
+async function fetchAndRenderReport(campName) {
+  const section = document.getElementById('ws-report-section');
+  if (!section) return;
+
+  try {
+    const report = await api('GET', `/api/playgrounds/${campName}/change-report?ai=true`);
+
+    if (report.totalCount === 0) {
+      if (lastReport && lastReport.summary) {
+        section.style.display = '';
+        section.classList.add('ws-report-saved');
+        document.getElementById('ws-report-summary').innerHTML =
+          `<div class="ws-report-desc ws-report-saved-desc">✅ 마지막 세이브: ${escHtml(lastReport.summary)}</div>`;
+        document.getElementById('ws-report-warnings').innerHTML = '';
+        document.getElementById('ws-report-categories').innerHTML = '';
+      } else {
+        section.style.display = 'none';
+      }
+      return;
+    }
+
+    lastReport = report;
+    section.style.display = '';
+    section.classList.remove('ws-report-saved');
+
+    const summaryEl = document.getElementById('ws-report-summary');
+    const changeSummaryText = document.getElementById('ws-changes-summary-text');
+    if (report.humanDescription) {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${escHtml(report.humanDescription)}</div>`;
+    } else if (report.summary) {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${escHtml(report.summary)}</div>`;
+    } else {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${report.totalCount}개 파일 변경됨</div>`;
+    }
+
+    if (changeSummaryText && report.summary) {
+      changeSummaryText.textContent = `⚠️ 저장 안 됨 — ${report.summary}`;
+    }
+
+    const warningsEl = document.getElementById('ws-report-warnings');
+    if (report.warnings.length > 0) {
+      warningsEl.innerHTML = report.warnings.map(w =>
+        `<div class="ws-report-warning">
+          <span class="ws-report-warning-icon">⚠️</span>
+          <span>${escHtml(w.message)}</span>
+        </div>`
+      ).join('');
+    } else {
+      warningsEl.innerHTML = '';
+    }
+
+    const categoryNames = { ui: '🎨 화면', api: '⚙️ 서버', config: '🔧 설정', test: '🧪 테스트', docs: '📝 문서', other: '📦 기타' };
+    const categoriesEl = document.getElementById('ws-report-categories');
+    categoriesEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) =>
+      `<div class="ws-report-cat">
+        <span class="ws-report-cat-label">${categoryNames[cat] || cat}</span>
+        <span class="ws-report-cat-count">${files.length}개</span>
+      </div>`
+    ).join('');
+
+  } catch {
+    section.style.display = 'none';
+  }
+}
+
+function transitionReportToSaved() {
+  const section = document.getElementById('ws-report-section');
+  if (!section || !lastReport) return;
+
+  if (lastReport.summary) {
+    section.style.display = '';
+    section.classList.add('ws-report-saved');
+    document.getElementById('ws-report-summary').innerHTML =
+      `<div class="ws-report-desc ws-report-saved-desc">✅ 마지막 세이브: ${escHtml(lastReport.summary)}</div>`;
+    document.getElementById('ws-report-warnings').innerHTML = '';
+    document.getElementById('ws-report-categories').innerHTML = '';
+  } else {
+    section.style.display = 'none';
+  }
+}
+
 function renderWorkspace(data) {
   const { camp, changes, warpInstalled, previewUrl, autosave } = data;
 
@@ -1187,6 +1273,7 @@ function renderWorkspace(data) {
     saveBtn.style.display = 'none';
     changesEl.innerHTML = '';
     renderBlocks([]);
+    fetchAndRenderReport(camp.name);
   } else {
     unsavedSection.classList.remove('ws-no-changes');
     summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${changes.count}개 파일 수정 중`;
@@ -1200,10 +1287,8 @@ function renderWorkspace(data) {
       </div>`
     ).join('');
     renderBlocks(changes.files);
-    // Fetch AI summary
-    api('GET', `/api/playgrounds/${camp.name}/changes-summary`).then(data => {
-      if (data.summary) summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${data.summary}`;
-    }).catch(() => {});
+    // 변경 리포트 fetch (changes-summary 대체)
+    fetchAndRenderReport(camp.name);
   }
 
   // Actions — show commits as work history
@@ -1426,15 +1511,12 @@ function updateQuestProgress(hasChanges, hasSaves) {
   }
 }
 
-let summaryFetchTimer = null;
-function debounceSummaryFetch(campName) {
-  if (summaryFetchTimer) clearTimeout(summaryFetchTimer);
-  summaryFetchTimer = setTimeout(() => {
-    api('GET', `/api/playgrounds/${campName}/changes-summary`).then(data => {
-      const el = document.getElementById('ws-changes-summary-text');
-      if (data.summary && el) el.textContent = data.summary;
-    }).catch(() => {});
-  }, 3000);
+let reportFetchTimer = null;
+function debounceReportFetch(campName) {
+  if (reportFetchTimer) clearTimeout(reportFetchTimer);
+  reportFetchTimer = setTimeout(() => {
+    fetchAndRenderReport(campName);
+  }, 5000);
 }
 
 let previewRefreshTimer = null;
