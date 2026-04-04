@@ -10,3 +10,4 @@ docs/superpowers/
 .playwright-mcp/
 sanjang.config.js
 .claude/
+sanjang-test/

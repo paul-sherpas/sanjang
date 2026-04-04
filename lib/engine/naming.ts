@@ -8,7 +8,7 @@ export function aiSlugify(description: string): string | null {
   try {
     const result = spawnSync(
       "claude",
-      ["-p", "--model", "haiku", `Convert this task description to a short kebab-case English slug (2-4 words, max 30 chars, lowercase, no explanation, just the slug):\n\n"${description}"`],
+      ["-p", "--model", "haiku", `Convert this task description to a kebab-case English slug. Rules: 3-5 words, max 30 chars, lowercase, descriptive (not just one word), no explanation, output ONLY the slug.\n\nExample: "로그인 버튼 색상 변경" → "login-button-color-change"\nExample: "대시보드 차트 추가" → "dashboard-chart-add"\n\nTask: "${description}"`],
       { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
     );
     if (result.status !== 0) return null;
