@@ -276,6 +276,7 @@ function handleWsMessage(msg) {
       }
 
       updateChangeSummary(data.count, data.ts);
+      updateMiniChar('running', data.count);
       debouncePreviewRefresh();
       break;
     }
@@ -1173,16 +1174,8 @@ function renderWorkspace(data) {
   statusEl.textContent = camp.status;
   statusEl.className = `workspace-status badge badge-${camp.status}`;
 
-  // Mini character in topbar
-  const miniChar = document.getElementById('ws-mini-char');
-  if (miniChar) {
-    miniChar.className = 'ws-mini-char';
-    const charState = camp.status === 'running' ? 'running'
-      : camp.status === 'error' ? 'error'
-      : camp.status === 'starting' || camp.status === 'starting-frontend' ? 'starting'
-      : 'stopped';
-    miniChar.classList.add(`ws-mini-char-${charState}`);
-  }
+  // Mini character in topbar — sherpa load level
+  updateMiniChar(camp.status, changes.count);
 
   // Changes — unsaved indicator + save button
   const changesEl = document.getElementById('ws-changes');
@@ -1348,6 +1341,35 @@ function playSaveEffect() {
     }
     btn.appendChild(sparkles);
     setTimeout(() => sparkles.remove(), 600);
+  }
+
+  // 4. Sherpa celebrates — jump + wave
+  const miniChar = document.getElementById('ws-mini-char');
+  if (miniChar) {
+    miniChar.className = 'ws-mini-char ws-mini-char-saved';
+    setTimeout(() => updateMiniChar('running', 0), 1000);
+  }
+}
+
+function updateMiniChar(status, changeCount) {
+  const miniChar = document.getElementById('ws-mini-char');
+  if (!miniChar) return;
+  miniChar.className = 'ws-mini-char';
+
+  if (status === 'error') {
+    miniChar.classList.add('ws-mini-char-error');
+  } else if (status === 'starting' || status === 'starting-frontend') {
+    miniChar.classList.add('ws-mini-char-starting');
+  } else if (status === 'stopped') {
+    miniChar.classList.add('ws-mini-char-stopped');
+  } else if (changeCount >= 15) {
+    miniChar.classList.add('ws-mini-char-load-heavy');
+  } else if (changeCount >= 7) {
+    miniChar.classList.add('ws-mini-char-load-medium');
+  } else if (changeCount >= 3) {
+    miniChar.classList.add('ws-mini-char-load-light');
+  } else {
+    miniChar.classList.add('ws-mini-char-running');
   }
 }
 

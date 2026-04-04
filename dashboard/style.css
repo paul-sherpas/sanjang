@@ -1834,6 +1834,7 @@ header.hidden {
   margin-left: 8px;
   flex-shrink: 0;
 }
+/* Sherpa load levels — backpack grows with unsaved changes */
 .ws-mini-char-running {
   animation: mini-walk 0.5s steps(1) infinite;
   box-shadow:
@@ -1843,9 +1844,76 @@ header.hidden {
     0px 6px 0 #3b3f5c, 4px 6px 0 #3b3f5c,
     0px 8px 0 #5b4a3a, 4px 8px 0 #5b4a3a;
 }
+/* light load: small backpack */
+.ws-mini-char-load-light {
+  animation: mini-walk 0.5s steps(1) infinite;
+  box-shadow:
+    2px 0 0 #5b8c5a, 4px 0 0 #5b8c5a,
+    2px 2px 0 #f4c07a, 4px 2px 0 #f4c07a,
+    0px 4px 0 #e85d3a, 2px 4px 0 #e85d3a, 4px 4px 0 #e85d3a, 6px 4px 0 #e85d3a,
+    8px 4px 0 #6366f1,
+    0px 6px 0 #3b3f5c, 4px 6px 0 #3b3f5c,
+    0px 8px 0 #5b4a3a, 4px 8px 0 #5b4a3a;
+}
+/* medium load: bigger backpack, slower */
+.ws-mini-char-load-medium {
+  animation: mini-walk-slow 0.8s steps(1) infinite;
+  box-shadow:
+    2px 0 0 #5b8c5a, 4px 0 0 #5b8c5a,
+    2px 2px 0 #f4c07a, 4px 2px 0 #f4c07a,
+    0px 4px 0 #e85d3a, 2px 4px 0 #e85d3a, 4px 4px 0 #e85d3a, 6px 4px 0 #e85d3a,
+    8px 2px 0 #6366f1, 8px 4px 0 #6366f1, 10px 4px 0 #5254cc,
+    0px 6px 0 #3b3f5c, 4px 6px 0 #3b3f5c,
+    0px 8px 0 #5b4a3a, 4px 8px 0 #5b4a3a;
+}
+/* heavy load: huge backpack, stumbling, sweat */
+.ws-mini-char-load-heavy {
+  animation: mini-stumble 1.2s steps(1) infinite;
+  box-shadow:
+    2px 0 0 #5b8c5a, 4px 0 0 #5b8c5a,
+    -2px -2px 0 #64b5f6,
+    2px 2px 0 #f4c07a, 4px 2px 0 #f4c07a,
+    0px 4px 0 #e85d3a, 2px 4px 0 #e85d3a, 4px 4px 0 #e85d3a, 6px 4px 0 #e85d3a,
+    8px 0 0 #6366f1, 10px 0 0 #5254cc,
+    8px 2px 0 #6366f1, 10px 2px 0 #5254cc,
+    8px 4px 0 #6366f1, 10px 4px 0 #5254cc, 12px 4px 0 #4a46b0,
+    0px 6px 0 #3b3f5c, 4px 6px 0 #3b3f5c,
+    0px 8px 0 #5b4a3a, 4px 8px 0 #5b4a3a;
+}
+/* saved celebration — jump + spin */
+.ws-mini-char-saved {
+  animation: mini-celebrate 0.8s steps(1) forwards;
+  box-shadow:
+    2px 0 0 #5b8c5a, 4px 0 0 #5b8c5a,
+    2px 2px 0 #f4c07a, 4px 2px 0 #f4c07a,
+    0px 4px 0 #e85d3a, 2px 4px 0 #e85d3a, 4px 4px 0 #e85d3a, 6px 4px 0 #e85d3a,
+    -2px 4px 0 #f4c07a, 8px 2px 0 #f4c07a,
+    0px 6px 0 #3b3f5c, 4px 6px 0 #3b3f5c,
+    0px 8px 0 #5b4a3a, 4px 8px 0 #5b4a3a;
+}
+@keyframes mini-celebrate {
+  0% { transform: translateY(0); }
+  20% { transform: translateY(-6px); }
+  40% { transform: translateY(-8px) rotate(15deg); }
+  60% { transform: translateY(-4px) rotate(-10deg); }
+  80% { transform: translateY(-1px) rotate(5deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
 @keyframes mini-walk {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-2px); }
+}
+@keyframes mini-walk-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+@keyframes mini-stumble {
+  0% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-1px) rotate(2deg); }
+  50% { transform: translateY(0) rotate(0deg); }
+  75% { transform: translateY(-1px) rotate(-3deg); }
+  100% { transform: translateY(0) rotate(0deg); }
 }
 
 .ws-mini-char-starting {
