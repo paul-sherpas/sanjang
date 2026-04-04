@@ -260,6 +260,7 @@ function handleWsMessage(msg) {
       if (data.count === 0) {
         if (summaryText2) summaryText2.textContent = '변경 없음';
         changesEl2.innerHTML = '';
+        renderBlocks([]);
       } else {
         if (summaryText2) summaryText2.textContent = `${data.count}개 파일 변경됨`;
         changesEl2.innerHTML = data.files.map(f => {
@@ -269,6 +270,7 @@ function handleWsMessage(msg) {
             <span>${escHtml(f.path)}</span>
           </div>`;
         }).join('');
+        renderBlocks(data.files);
         // Debounced AI summary fetch
         debounceSummaryFetch(name);
       }
@@ -1181,6 +1183,7 @@ function renderWorkspace(data) {
     summaryTextEl.textContent = '✅ 모든 변경이 세이브됨';
     saveBtn.style.display = 'none';
     changesEl.innerHTML = '';
+    renderBlocks([]);
   } else {
     unsavedSection.classList.remove('ws-no-changes');
     summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${changes.count}개 파일 수정 중`;
@@ -1193,6 +1196,7 @@ function renderWorkspace(data) {
         <span>${escHtml(f.path)}</span>
       </div>`
     ).join('');
+    renderBlocks(changes.files);
     // Fetch AI summary
     api('GET', `/api/playgrounds/${camp.name}/changes-summary`).then(data => {
       if (data.summary) summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${data.summary}`;
@@ -1275,6 +1279,21 @@ function timeAgo(ts) {
   if (sec < 5) return '방금';
   if (sec < 60) return `${sec}초 전`;
   return `${Math.floor(sec / 60)}분 전`;
+}
+
+function renderBlocks(files) {
+  const container = document.getElementById('ws-blocks');
+  if (!container) return;
+  if (!files || files.length === 0) {
+    container.innerHTML = '';
+    container.classList.remove('ws-blocks-wobble');
+    return;
+  }
+  container.innerHTML = files.map(f => {
+    const type = f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del';
+    return `<div class="ws-block ws-block-${type}" title="${f.path}"></div>`;
+  }).join('');
+  container.classList.toggle('ws-blocks-wobble', files.length >= 5);
 }
 
 let summaryFetchTimer = null;

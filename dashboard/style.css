@@ -1742,3 +1742,38 @@ header.hidden {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* === Gamification: Unsaved pixel blocks === */
+.ws-blocks {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 36px;
+  padding: 4px 0;
+}
+.ws-block {
+  width: 20px;
+  border-radius: 0;
+  image-rendering: pixelated;
+  border: 2px solid rgba(0,0,0,0.3);
+  animation: block-drop 0.3s steps(4);
+  transition: height 0.15s steps(3);
+}
+.ws-block-mod { background: #f59e0b; height: 16px; }
+.ws-block-new { background: #22c55e; height: 24px; }
+.ws-block-del { background: #ef4444; height: 12px; }
+
+@keyframes block-drop {
+  0% { transform: translateY(-16px); opacity: 0; }
+  50% { transform: translateY(2px); }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.ws-blocks.ws-blocks-wobble {
+  animation: blocks-wobble 1.5s steps(4) infinite;
+}
+@keyframes blocks-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(1deg); }
+  75% { transform: rotate(-1deg); }
+}
