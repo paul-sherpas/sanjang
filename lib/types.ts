@@ -128,3 +128,25 @@ export type BroadcastMessage = {
 };
 
 export type EventCallback = (event: BroadcastMessage) => void;
+
+export interface ChangeReportFile {
+  path: string;
+  status: "수정" | "추가" | "삭제" | "새 파일";
+  category: "ui" | "api" | "config" | "test" | "docs" | "other";
+}
+
+export interface ChangeReportWarning {
+  type: "config" | "db" | "env" | "infra" | "security";
+  message: string;
+  file: string;
+}
+
+export interface ChangeReport {
+  files: ChangeReportFile[];
+  totalCount: number;
+  byCategory: Record<string, ChangeReportFile[]>;
+  warnings: ChangeReportWarning[];
+  summary: string | null;
+  humanDescription: string | null;
+  categoryDetails: Record<string, string[]> | null; // 카테고리별 변경 내용 설명
+}

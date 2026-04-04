@@ -77,11 +77,17 @@
       </div>
       <div style="flex:1"></div>
       <button class="btn btn-sub btn-sm" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널</button>
+      <button class="btn btn-sub btn-sm" id="ws-compare-btn" onclick="toggleCompare()" title="원본과 비교">🔀 비교</button>
       <button class="btn btn-sub btn-sm" onclick="togglePanel()">⛰ 패널</button>
     </div>
 
-    <!-- Preview — full screen -->
-    <div class="ws-preview-full" id="ws-preview"></div>
+    <!-- Preview — full screen with optional split -->
+    <div class="ws-preview-container" id="ws-preview-container">
+      <div class="ws-preview-full" id="ws-preview"></div>
+      <div class="ws-preview-main hidden" id="ws-preview-main">
+        <div class="ws-preview-label">🏔️ 원본 (main)</div>
+      </div>
+    </div>
 
     <!-- Slide panel — right side -->
     <div class="ws-panel" id="ws-panel">
@@ -99,6 +105,12 @@
             <summary>파일 보기</summary>
             <div id="ws-changes"></div>
           </details>
+        </div>
+        <div class="workspace-section ws-report-section" id="ws-report-section" style="display:none">
+          <h3>📋 변경 리포트</h3>
+          <div class="ws-report-summary" id="ws-report-summary"></div>
+          <div class="ws-report-warnings" id="ws-report-warnings"></div>
+          <div class="ws-report-categories" id="ws-report-categories"></div>
         </div>
         <div class="workspace-section">
           <h3>📜 세이브 기록</h3>
@@ -219,6 +231,7 @@
       <p id="ship-file-count" style="font-size:13px;color:var(--text-muted);margin-bottom:12px"></p>
 
       <div class="form-group">
+          <div id="ship-report-preview" class="ship-report-preview" style="display:none"></div>
         <label class="form-label" for="ship-message">뭘 바꿨나요? (한 줄로)</label>
         <input
           class="form-input"

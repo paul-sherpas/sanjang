@@ -8,9 +8,11 @@ import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
+import { buildChangeReport, generateReportSummary } from "./engine/change-report.ts";
 import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
 import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
+import { getMainServerState, startMainServer, stopMainServer } from "./engine/main-server.ts";
 import { aiSlugify, slugify } from "./engine/naming.ts";
 import { allocate, scanPorts, setPortConfig } from "./engine/ports.ts";
 import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
@@ -418,10 +420,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     // Only allow proxying to known camp ports (prevent SSRF to arbitrary local services)
     const camps = getAll();
     const camp = camps.find((c) => c.fePort === targetPort);
-    if (!camp) {
+    const mainState = getMainServerState();
+    const isMainPort = mainState.status === "running" && mainState.port === targetPort;
+
+    if (!camp && !isMainPort) {
       return res.status(403).send("이 포트는 활성 캠프가 아닙니다.");
     }
-    const campName = camp.name;
+    const campName = camp?.name ?? "__main__";
 
     const targetPath = req.url || "/";
     const proxyReq = httpRequest(
@@ -938,31 +943,111 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  // GET /api/playgrounds/:name/changes-summary — AI 한 줄 변경 요약
-  app.get("/api/playgrounds/:name/changes-summary", async (req: NameReq, res: Response) => {
+  // GET /api/playgrounds/:name/change-report — 구조화된 변경 리포트 (changes-summary 대체)
+  app.get("/api/playgrounds/:name/change-report", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: "not found" });
     try {
       const wtPath = campPath(name);
-      const diff = spawnSync("git", ["-C", wtPath, "diff", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
-      if (!diff.trim()) return res.json({ summary: null });
+      const files = getChangedFiles(wtPath);
 
-      const result = spawnSync(
-        "claude",
-        [
-          "-p",
-          "--model",
-          "haiku",
-          `이 git diff를 한국어 한 줄(20자 이내)로 요약해. 설명 없이 요약만:\n\n${diff.slice(0, 2000)}`,
-        ],
-        { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
-      );
-      const summary = result.status === 0 ? (result.stdout ?? "").trim() : null;
-      res.json({ summary });
-    } catch {
-      res.json({ summary: null });
+      if (files.length === 0) {
+        return res.json({
+          files: [],
+          totalCount: 0,
+          byCategory: {},
+          warnings: [],
+          summary: null,
+          humanDescription: null,
+          categoryDetails: null,
+        });
+      }
+
+      const validStatuses = new Set<string>(["수정", "추가", "삭제", "새 파일"]);
+      const reportFiles = files.map((f) => ({
+        path: f.path,
+        status: (validStatuses.has(f.status) ? f.status : "수정") as "수정" | "추가" | "삭제" | "새 파일",
+      }));
+      let report = buildChangeReport(reportFiles);
+
+      // AI 요약은 ?ai=true 일 때만 (비용 절약)
+      if (req.query.ai === "true") {
+        const diffStat =
+          spawnSync("git", ["-C", wtPath, "diff", "--stat"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout || "";
+        const diff =
+          spawnSync("git", ["-C", wtPath, "diff"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout || "";
+        report = generateReportSummary(diffStat, diff, report);
+      }
+
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
     }
   });
+
+  // GET /api/playgrounds/:name/commit-report/:hash — 특정 커밋의 변경 리포트
+  app.get(
+    "/api/playgrounds/:name/commit-report/:hash",
+    async (req: Request<{ name: string; hash: string }>, res: Response) => {
+      const { name, hash } = req.params;
+      if (!getOne(name)) return res.status(404).json({ error: "not found" });
+      try {
+        const wtPath = campPath(name);
+        // 해당 커밋의 diff (부모 대비)
+        const diffNames =
+          spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${hash}~1..${hash}`], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout?.trim() || "";
+
+        if (!diffNames)
+          return res.json({
+            files: [],
+            totalCount: 0,
+            byCategory: {},
+            warnings: [],
+            summary: null,
+            humanDescription: null,
+            categoryDetails: null,
+          });
+
+        const validStatuses = new Set<string>(["수정", "추가", "삭제", "새 파일"]);
+        const statusMap: Record<string, string> = { M: "수정", A: "새 파일", D: "삭제" };
+        const parsedFiles = diffNames.split("\n").map((line) => {
+          const [st, ...pathParts] = line.split("\t");
+          const mapped = statusMap[st || ""] || "수정";
+          return {
+            path: pathParts.join("\t"),
+            status: (validStatuses.has(mapped) ? mapped : "수정") as "수정" | "추가" | "삭제" | "새 파일",
+          };
+        });
+
+        let report = buildChangeReport(parsedFiles);
+
+        if (req.query.ai === "true") {
+          const diffStat =
+            spawnSync("git", ["-C", wtPath, "diff", "--stat", `${hash}~1..${hash}`], {
+              encoding: "utf8",
+              stdio: "pipe",
+            }).stdout || "";
+          const diff =
+            spawnSync("git", ["-C", wtPath, "diff", `${hash}~1..${hash}`], { encoding: "utf8", stdio: "pipe" })
+              .stdout || "";
+          report = generateReportSummary(diffStat, diff, report);
+        }
+
+        res.json(report);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
 
   app.post("/api/playgrounds/:name/ship", async (req: NameReq, res: Response) => {
     const { name } = req.params;
@@ -1051,6 +1136,38 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           const diff =
             spawnSync("git", ["-C", wtPath, "diff", "HEAD~1"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
 
+          // Change report warnings for PR body — based on full diff since camp creation
+          let reportWarnings = "";
+          try {
+            const base = pg.baseCommit;
+            if (base) {
+              const diffFiles =
+                spawnSync("git", ["-C", wtPath, "diff", "--name-status", `${base}..HEAD`], {
+                  encoding: "utf8",
+                  stdio: "pipe",
+                }).stdout?.trim() || "";
+              if (diffFiles) {
+                const parsedFiles = diffFiles.split("\n").map((line) => {
+                  const [st, ...pathParts] = line.split("\t");
+                  return {
+                    path: pathParts.join("\t"),
+                    status: (st === "M" ? "수정" : st === "D" ? "삭제" : st === "A" ? "추가" : "수정") as
+                      | "수정"
+                      | "추가"
+                      | "삭제"
+                      | "새 파일",
+                  };
+                });
+                const shipReport = buildChangeReport(parsedFiles);
+                if (shipReport.warnings.length > 0) {
+                  reportWarnings = "\n\n### ⚠️ 주의사항\n" + shipReport.warnings.map((w) => `- ${w.message}`).join("\n");
+                }
+              }
+            }
+          } catch {
+            /* non-critical */
+          }
+
           // Try Claude for rich PR body, fallback to simple
           const claudeCheck = spawnSync("which", ["claude"], { stdio: "pipe" });
           let prBody: string;
@@ -1066,10 +1183,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             });
             prBody =
               claudeResult.status === 0 && claudeResult.stdout?.trim()
-                ? claudeResult.stdout.trim()
-                : buildFallbackPrBody({ message, actions, diffStat });
+                ? claudeResult.stdout.trim() + reportWarnings
+                : buildFallbackPrBody({ message, actions, diffStat }) + reportWarnings;
           } else {
-            prBody = buildFallbackPrBody({ message, actions, diffStat });
+            prBody = buildFallbackPrBody({ message, actions, diffStat }) + reportWarnings;
           }
 
           const prResult = spawnSync(
@@ -1626,6 +1743,33 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   let activityCache: { data: ActivityData; ts: number } | null = null;
   const ACTIVITY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // GET /api/compare/status — main 서버 상태
+  app.get("/api/compare/status", (_req: Request, res: Response) => {
+    res.json(getMainServerState());
+  });
+
+  // POST /api/compare/start — main 서버 시작
+  app.post("/api/compare/start", async (_req: Request, res: Response) => {
+    const mainState = getMainServerState();
+    if (mainState.status === "running") {
+      return res.json(mainState);
+    }
+    try {
+      await startMainServer(projectRoot, config, (port) => {
+        broadcast({ type: "compare-ready", data: { port } });
+      });
+      res.json(getMainServerState());
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // POST /api/compare/stop — main 서버 중지
+  app.post("/api/compare/stop", (_req: Request, res: Response) => {
+    stopMainServer();
+    res.json({ ok: true });
+  });
+
   app.get("/api/activity", (_req: Request, res: Response) => {
     if (activityCache && Date.now() - activityCache.ts < ACTIVITY_CACHE_TTL) {
       return res.json(activityCache.data);
@@ -1726,6 +1870,7 @@ export async function startServer(projectRoot: string, options: CreateAppOptions
     for (const [, w] of watchers) w.stop();
     watchers.clear();
     stopAllCamps();
+    stopMainServer();
     server.close(() => process.exit(0));
     // Force exit after 10s if cleanup hangs
     setTimeout(() => process.exit(1), 10_000);

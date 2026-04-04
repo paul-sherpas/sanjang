@@ -22,6 +22,11 @@ let currentWorkspace = null;
 /** @type {number|null} polling interval for workspace changes */
 let wsPollingInterval = null;
 
+/** @type {object|null} 마지막 리포트 캐시 — 세이브 후 축소 표시용 */
+let lastReport = null;
+
+let compareMode = false;
+
 const SHERPA_QUOTES = [
   "요구사항 또 바뀌었댜... 뭐 그러려니 하쥬",
   "'간단한 건데~' 그 말이 제일 무섭댜",
@@ -218,6 +223,7 @@ function handleWsMessage(msg) {
     case 'playground-saved': {
       if (!name) break;
       toast(`💾 세이브됨: ${data?.message || ''}`, 'success');
+      if (currentWorkspace === name) transitionReportToSaved();
       break;
     }
 
@@ -225,6 +231,7 @@ function handleWsMessage(msg) {
       if (!name) break;
       toast('💾 오토세이브 완료', 'success');
       if (currentWorkspace === name) {
+        transitionReportToSaved();
         api('POST', `/api/playgrounds/${name}/enter`).then(renderWorkspace).catch(() => {});
       }
       break;
@@ -263,13 +270,26 @@ function handleWsMessage(msg) {
           </div>`;
         }).join('');
         renderBlocks(data.files);
-        // Debounced AI summary fetch
-        debounceSummaryFetch(name);
+        // Debounced AI report fetch
+        debounceReportFetch(name);
       }
 
       updateChangeSummary(data.count, data.ts);
       updateMiniChar('running', data.count);
       debouncePreviewRefresh();
+      break;
+    }
+
+    case 'compare-ready': {
+      if (!compareMode) break;
+      const mainPreview = document.getElementById('ws-preview-main');
+      if (mainPreview && data?.port) {
+        const proxyUrl = `/preview/${data.port}/`;
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <iframe src="${escHtml(proxyUrl)}" class="ws-preview-iframe"></iframe>`;
+        toast('원본 프리뷰 준비 완료!', 'success');
+      }
       break;
     }
   }
@@ -1153,6 +1173,14 @@ function enterWorkspace(name) {
 }
 
 function exitWorkspace() {
+  compareMode = false;
+  const compareBtn = document.getElementById('ws-compare-btn');
+  if (compareBtn) compareBtn.classList.remove('btn-active');
+  const mainPreview = document.getElementById('ws-preview-main');
+  if (mainPreview) mainPreview.classList.add('hidden');
+  const container = document.getElementById('ws-preview-container');
+  if (container) container.classList.remove('ws-split-view');
+  lastReport = null;
   currentWorkspace = null;
   if (wsPollingInterval) { clearInterval(wsPollingInterval); wsPollingInterval = null; }
   document.getElementById('workspace').classList.add('hidden');
@@ -1163,6 +1191,100 @@ function exitWorkspace() {
   loadPortal();
 }
 window.exitWorkspace = exitWorkspace;
+
+async function fetchAndRenderReport(campName, withAi = false) {
+  const section = document.getElementById('ws-report-section');
+  if (!section) return;
+
+  try {
+    const report = await api('GET', `/api/playgrounds/${campName}/change-report${withAi ? '?ai=true' : ''}`);
+
+    if (report.totalCount === 0) {
+      if (lastReport && lastReport.summary) {
+        section.style.display = '';
+        section.classList.add('ws-report-saved');
+        document.getElementById('ws-report-summary').innerHTML =
+          `<div class="ws-report-desc ws-report-saved-desc">✅ 마지막 세이브: ${escHtml(lastReport.summary)}</div>`;
+        document.getElementById('ws-report-warnings').innerHTML = '';
+        document.getElementById('ws-report-categories').innerHTML = '';
+      } else {
+        section.style.display = 'none';
+      }
+      return;
+    }
+
+    lastReport = report;
+    section.style.display = '';
+    section.classList.remove('ws-report-saved');
+
+    const summaryEl = document.getElementById('ws-report-summary');
+    const changeSummaryText = document.getElementById('ws-changes-summary-text');
+    if (report.humanDescription) {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${escHtml(report.humanDescription)}</div>`;
+    } else if (report.summary) {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${escHtml(report.summary)}</div>`;
+    } else {
+      summaryEl.innerHTML = `<div class="ws-report-desc">${report.totalCount}개 파일 변경됨</div>`;
+    }
+
+    if (changeSummaryText && report.summary) {
+      changeSummaryText.textContent = `⚠️ 저장 안 됨 — ${report.summary}`;
+    }
+
+    const warningsEl = document.getElementById('ws-report-warnings');
+    if (report.warnings.length > 0) {
+      warningsEl.innerHTML = report.warnings.map(w =>
+        `<div class="ws-report-warning">
+          <span class="ws-report-warning-icon">⚠️</span>
+          <span>${escHtml(w.message)}</span>
+        </div>`
+      ).join('');
+    } else {
+      warningsEl.innerHTML = '';
+    }
+
+    const categoryNames = { ui: '🎨 화면', api: '⚙️ 서버', config: '🔧 설정', test: '🧪 테스트', docs: '📝 문서', other: '📦 기타' };
+    const categoriesEl = document.getElementById('ws-report-categories');
+    const details = report.categoryDetails || {};
+    categoriesEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) => {
+      const items = details[cat];
+      const hasDetails = items && items.length > 0;
+      return `<div class="ws-report-cat-group">
+        <div class="ws-report-cat-header">
+          <span class="ws-report-cat-label">${categoryNames[cat] || cat}</span>
+          <span class="ws-report-cat-count">${files.length}</span>
+        </div>
+        ${hasDetails
+          ? `<ul class="ws-report-cat-items">${items.map(item =>
+              `<li>${escHtml(item)}</li>`
+            ).join('')}</ul>`
+          : `<ul class="ws-report-cat-items">${files.map(f =>
+              `<li>${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</li>`
+            ).join('')}</ul>`
+        }
+      </div>`;
+    }).join('');
+
+  } catch {
+    section.style.display = 'none';
+  }
+}
+
+function transitionReportToSaved() {
+  const section = document.getElementById('ws-report-section');
+  if (!section || !lastReport) return;
+
+  if (lastReport.summary) {
+    section.style.display = '';
+    section.classList.add('ws-report-saved');
+    document.getElementById('ws-report-summary').innerHTML =
+      `<div class="ws-report-desc ws-report-saved-desc">✅ 마지막 세이브: ${escHtml(lastReport.summary)}</div>`;
+    document.getElementById('ws-report-warnings').innerHTML = '';
+    document.getElementById('ws-report-categories').innerHTML = '';
+  } else {
+    section.style.display = 'none';
+  }
+}
 
 function renderWorkspace(data) {
   const { camp, changes, warpInstalled, previewUrl, autosave } = data;
@@ -1187,6 +1309,7 @@ function renderWorkspace(data) {
     saveBtn.style.display = 'none';
     changesEl.innerHTML = '';
     renderBlocks([]);
+    fetchAndRenderReport(camp.name);
   } else {
     unsavedSection.classList.remove('ws-no-changes');
     summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${changes.count}개 파일 수정 중`;
@@ -1200,10 +1323,9 @@ function renderWorkspace(data) {
       </div>`
     ).join('');
     renderBlocks(changes.files);
-    // Fetch AI summary
-    api('GET', `/api/playgrounds/${camp.name}/changes-summary`).then(data => {
-      if (data.summary) summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${data.summary}`;
-    }).catch(() => {});
+    // 먼저 fallback으로 빠르게 렌더, 이어서 AI로 업그레이드
+    fetchAndRenderReport(camp.name);
+    fetchAndRenderReport(camp.name, true);
   }
 
   // Actions — show commits as work history
@@ -1211,12 +1333,22 @@ function renderWorkspace(data) {
   const commitList = data.commits || [];
   if (commitList.length > 0) {
     actionsEl.innerHTML = commitList.map(c =>
-      `<div class="ws-commit-item">
-        <span class="ws-commit-msg">${escHtml(c.message)}</span>
-        <span class="ws-commit-date">${escHtml(c.date)}</span>
-        <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
-      </div>`
+      `<details class="ws-commit-item" data-hash="${escHtml(c.hash)}">
+        <summary class="ws-commit-summary">
+          <span class="ws-commit-arrow">▶</span>
+          <span class="ws-commit-msg">${escHtml(c.message)}</span>
+          <span class="ws-commit-date">${escHtml(c.date)}</span>
+          <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="event.stopPropagation();event.preventDefault();revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
+        </summary>
+        <div class="ws-commit-report"></div>
+      </details>`
     ).join('');
+    // 펼칠 때 자동으로 리포트 로드
+    actionsEl.querySelectorAll('.ws-commit-item').forEach(el => {
+      el.addEventListener('toggle', function() {
+        if (this.open) loadCommitReport(this, this.dataset.hash);
+      });
+    });
   } else if (changes.count > 0) {
     actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 커밋 없음 (작업 중)</span>';
   } else {
@@ -1426,15 +1558,45 @@ function updateQuestProgress(hasChanges, hasSaves) {
   }
 }
 
-let summaryFetchTimer = null;
-function debounceSummaryFetch(campName) {
-  if (summaryFetchTimer) clearTimeout(summaryFetchTimer);
-  summaryFetchTimer = setTimeout(() => {
-    api('GET', `/api/playgrounds/${campName}/changes-summary`).then(data => {
-      const el = document.getElementById('ws-changes-summary-text');
-      if (data.summary && el) el.textContent = data.summary;
-    }).catch(() => {});
-  }, 3000);
+async function loadCommitReport(el, hash) {
+  const reportEl = el.querySelector('.ws-commit-report');
+  if (!reportEl || reportEl.dataset.loaded) return;
+
+  reportEl.innerHTML = '<div class="ws-commit-report-loading">불러오는 중...</div>';
+
+  try {
+    const report = await api('GET', `/api/playgrounds/${currentWorkspace}/commit-report/${hash}?ai=true`);
+    const categoryNames = { ui: '🎨 화면', api: '⚙️ 서버', config: '🔧 설정', test: '🧪 테스트', docs: '📝 문서', other: '📦 기타' };
+    const details = report.categoryDetails || {};
+
+    if (report.totalCount === 0) {
+      reportEl.innerHTML = '<div class="ws-commit-report-empty">변경 내용 없음</div>';
+      return;
+    }
+
+    reportEl.innerHTML = Object.entries(report.byCategory).map(([cat, files]) => {
+      const items = details[cat];
+      const hasDetails = items && items.length > 0;
+      return `<div class="ws-commit-cat">
+        <span class="ws-commit-cat-label">${categoryNames[cat] || cat}</span>
+        ${hasDetails
+          ? items.map(item => `<div class="ws-commit-cat-item">${escHtml(item)}</div>`).join('')
+          : files.map(f => `<div class="ws-commit-cat-item">${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</div>`).join('')
+        }
+      </div>`;
+    }).join('');
+    reportEl.dataset.loaded = 'true';
+  } catch {
+    reportEl.innerHTML = '<div class="ws-commit-report-empty">불러오기 실패</div>';
+  }
+}
+
+let reportFetchTimer = null;
+function debounceReportFetch(campName) {
+  if (reportFetchTimer) clearTimeout(reportFetchTimer);
+  reportFetchTimer = setTimeout(() => {
+    fetchAndRenderReport(campName, true);
+  }, 5000);
 }
 
 let previewRefreshTimer = null;
@@ -1561,8 +1723,26 @@ function clearBrowserErrors() {
   renderBrowserErrors();
 }
 
-window.wsShip = function() {
+window.wsShip = async function() {
   if (!currentWorkspace) return;
+  // Fetch report for ship confirmation
+  try {
+    const report = await api('GET', `/api/playgrounds/${currentWorkspace}/change-report?ai=true`);
+    const reportPreview = document.getElementById('ship-report-preview');
+    if (reportPreview && report.totalCount > 0) {
+      let html = '';
+      if (report.humanDescription) {
+        html += `<div class="ship-report-desc">${escHtml(report.humanDescription)}</div>`;
+      }
+      if (report.warnings.length > 0) {
+        html += report.warnings.map(w =>
+          `<div class="ws-report-warning"><span>⚠️</span> ${escHtml(w.message)}</div>`
+        ).join('');
+      }
+      reportPreview.innerHTML = html;
+      reportPreview.style.display = html ? '' : 'none';
+    }
+  } catch { /* non-blocking */ }
   openShipModal(currentWorkspace);
 };
 
@@ -1639,6 +1819,48 @@ window.wsSave = async function() {
 
 window.togglePanel = function() {
   document.getElementById('ws-panel')?.classList.toggle('open');
+};
+
+window.toggleCompare = async function() {
+  const container = document.getElementById('ws-preview-container');
+  const mainPreview = document.getElementById('ws-preview-main');
+  const compareBtn = document.getElementById('ws-compare-btn');
+  if (!container || !mainPreview) return;
+
+  compareMode = !compareMode;
+
+  if (compareMode) {
+    compareBtn.classList.add('btn-active');
+    mainPreview.classList.remove('hidden');
+    container.classList.add('ws-split-view');
+
+    toast('원본 서버를 준비하고 있어요...', 'info');
+    try {
+      const state = await api('POST', '/api/compare/start');
+      if (state.status === 'running' && state.port) {
+        const proxyUrl = `/preview/${state.port}/`;
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <iframe src="${escHtml(proxyUrl)}" class="ws-preview-iframe"></iframe>`;
+      } else if (state.status === 'starting') {
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <div class="ws-preview-loading">준비 중...</div>`;
+      } else {
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <div class="ws-preview-loading">원본 서버를 시작하지 못했어요</div>`;
+      }
+    } catch {
+      mainPreview.innerHTML = `
+        <div class="ws-preview-label">🏔️ 원본 (main)</div>
+        <div class="ws-preview-loading">원본 서버를 시작하지 못했어요</div>`;
+    }
+  } else {
+    compareBtn.classList.remove('btn-active');
+    mainPreview.classList.add('hidden');
+    container.classList.remove('ws-split-view');
+  }
 };
 
 // ---------------------------------------------------------------------------
