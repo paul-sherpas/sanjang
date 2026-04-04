@@ -1,6 +1,6 @@
 {
   "name": "sanjang",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local dev environment manager for vibe coders",
   "type": "module",
   "bin": {
