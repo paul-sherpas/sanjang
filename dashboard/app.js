@@ -2467,9 +2467,11 @@ async function loadActivityTrail() {
       }
     });
 
-    // Tents on rest days (0 commits, not first/last)
+    // Tents on rest days — limit density when most days are rest days
+    const activeDays = days.filter(d => d.commits > 0).length;
+    const tentChance = activeDays < 5 ? 0.85 : 0.5; // fewer active days → fewer tents
     heights.forEach((h, i) => {
-      if (days[i].commits === 0 && i > 0 && i < days.length - 1 && Math.random() > 0.5) {
+      if (days[i].commits === 0 && i > 0 && i < days.length - 1 && Math.random() > tentChance) {
         const x = 20 + i * dayW + dayW / 2 - 4;
         decorations += `
           <rect x="${x + 3}" y="${ground - 8}" width="2" height="2" fill="#6b7394"/>
@@ -2520,8 +2522,8 @@ async function loadActivityTrail() {
         <polygon points="${x + 2},${highest.h} ${x + 8},${highest.h + 3} ${x + 2},${highest.h + 6}" fill="#f59e0b"/>`;
     }
 
-    // Sherpa at today (last position)
-    const lastX = 20 + (days.length - 1) * dayW + dayW / 2 - 4;
+    // Sherpa at today (last position, clamped to SVG bounds)
+    const lastX = Math.min(20 + (days.length - 1) * dayW + dayW / 2 - 4, svgW - 24);
     const lastH = heights[heights.length - 1];
     const sherpaY = lastH - 16;
     const sherpa = `

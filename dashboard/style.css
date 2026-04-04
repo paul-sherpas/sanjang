@@ -2096,6 +2096,9 @@ header.hidden {
   font-size: 11px;
   color: #e4e8f0;
   white-space: nowrap;
+  max-width: min(320px, calc(100vw - 120px));
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: bubble-float 3s ease-in-out infinite;
 }
 
