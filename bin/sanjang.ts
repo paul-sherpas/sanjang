@@ -132,20 +132,134 @@ if (command === "init") {
   }
 } else if (command === "help" || command === "--help" || command === "-h") {
   console.log(`
-⛰ 산장 (Sanjang) — 바이브코더를 위한 로컬 개발 환경 매니저
+⛰ 산장 (Sanjang) — 비개발자가 AI로 코드를 고치고 PR을 보낼 수 있는 로컬 개발 환경
 
 사용법:
   sanjang              서버 시작 (대시보드: http://localhost:4000)
   sanjang init         프로젝트 분석 → sanjang.config.js 생성
+  sanjang list         캠프 목록 보기
+  sanjang status       서버 + 캠프 상태 확인
+  sanjang start <name> 캠프 시작
+  sanjang stop <name>  캠프 중지
+  sanjang open <name>  캠프를 브라우저에서 열기
   sanjang help         이 도움말
 
 옵션:
   --port <N>           대시보드 포트 (기본: 4000)
   --project <path>     프로젝트 경로 (기본: 현재 디렉토리)
+  --json               JSON으로 출력 (Claude Code 등 자동화용)
   --force              기존 설정을 덮어쓰고 다시 생성
 
 자세히: https://github.com/paul-sherpas/sanjang
 `);
+} else if (command === "list" || command === "status" || command === "start" || command === "stop" || command === "open") {
+  // CLI commands that talk to the running sanjang server
+  const jsonMode = args.includes("--json");
+  const campName = args[1] && !args[1]!.startsWith("-") ? args[1] : undefined;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  async function apiFetch(path: string, method = "GET", body?: unknown): Promise<unknown> {
+    const opts: RequestInit = { method, headers: { "content-type": "application/json" } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(`${baseUrl}${path}`, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
+      throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function tryApi<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).cause && String((err as NodeJS.ErrnoException).cause).includes("ECONNREFUSED")) {
+        console.error("⛰ 산장 서버가 실행되지 않고 있습니다.");
+        console.error(`  sanjang 또는 npx sanjang 으로 먼저 시작하세요.`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  try {
+    if (command === "list") {
+      const camps = await tryApi(() => apiFetch("/api/playgrounds")) as Array<{
+        name: string; branch: string; status: string; fePort?: number;
+      }>;
+      if (jsonMode) {
+        process.stdout.write(JSON.stringify(camps, null, 2) + "\n");
+      } else if (camps.length === 0) {
+        console.log("⛰ 캠프가 없습니다. 대시보드에서 만들어보세요.");
+      } else {
+        console.log("⛰ 캠프 목록:\n");
+        for (const c of camps) {
+          const status = c.status === "running" ? "🟢" : c.status === "error" ? "🔴" : "⚪";
+          const url = c.status === "running" && c.fePort ? `http://localhost:${c.fePort}` : "";
+          console.log(`  ${status} ${c.name}\t${c.branch}\t${url}`);
+        }
+      }
+    } else if (command === "status") {
+      const camps = await tryApi(() => apiFetch("/api/playgrounds")) as Array<{
+        name: string; status: string; fePort?: number;
+      }>;
+      const running = camps.filter(c => c.status === "running").length;
+      const total = camps.length;
+      if (jsonMode) {
+        process.stdout.write(JSON.stringify({ server: { url: baseUrl, status: "running" }, camps }, null, 2) + "\n");
+      } else {
+        console.log(`⛰ 산장 서버: ${baseUrl}`);
+        console.log(`  캠프: ${total}개 (실행 중 ${running}개)`);
+        for (const c of camps) {
+          const status = c.status === "running" ? "🟢" : c.status === "error" ? "🔴" : "⚪";
+          console.log(`  ${status} ${c.name} (${c.status})`);
+        }
+      }
+    } else if (command === "start") {
+      if (!campName) { console.error("⛰ 사용법: sanjang start <캠프이름>"); process.exit(1); }
+      const result = await tryApi(() => apiFetch(`/api/playgrounds/${campName}/start`, "POST"));
+      if (jsonMode) {
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      } else {
+        console.log(`⛰ ${campName} 캠프를 시작합니다.`);
+      }
+    } else if (command === "stop") {
+      if (!campName) { console.error("⛰ 사용법: sanjang stop <캠프이름>"); process.exit(1); }
+      const result = await tryApi(() => apiFetch(`/api/playgrounds/${campName}/stop`, "POST"));
+      if (jsonMode) {
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      } else {
+        console.log(`⛰ ${campName} 캠프를 중지합니다.`);
+      }
+    } else if (command === "open") {
+      if (!campName) { console.error("⛰ 사용법: sanjang open <캠프이름>"); process.exit(1); }
+      const camps = await tryApi(() => apiFetch("/api/playgrounds")) as Array<{
+        name: string; status: string; fePort?: number;
+      }>;
+      const camp = camps.find(c => c.name === campName);
+      if (!camp) { console.error(`⛰ "${campName}" 캠프를 찾을 수 없습니다.`); process.exit(1); }
+      if (camp.status !== "running" || !camp.fePort) {
+        console.error(`⛰ "${campName}" 캠프가 실행 중이 아닙니다. sanjang start ${campName} 을 먼저 실행하세요.`);
+        process.exit(1);
+      }
+      const campUrl = `http://localhost:${camp.fePort}`;
+      if (jsonMode) {
+        process.stdout.write(JSON.stringify({ name: campName, url: campUrl, status: camp.status }, null, 2) + "\n");
+      } else {
+        console.log(`⛰ ${campName} 캠프를 브라우저에서 엽니다. → ${campUrl}`);
+      }
+      const { spawn: spawnOpen } = await import("node:child_process");
+      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      try { spawnOpen(openCmd, [campUrl], { stdio: "ignore", detached: true }).unref(); } catch { /* */ }
+    }
+  } catch (err) {
+    if (jsonMode) {
+      process.stdout.write(JSON.stringify({ error: (err as Error).message }, null, 2) + "\n");
+    } else {
+      console.error(`⛰ 오류: ${(err as Error).message}`);
+    }
+    process.exit(1);
+  }
 } else {
   // Default: start server — auto-init if no config exists
   const configPath = resolve(projectRoot, "sanjang.config.js");
