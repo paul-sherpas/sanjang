@@ -13,8 +13,12 @@ export function deepFindEnvFiles(projectRoot: string, maxDepth: number = 4): str
 
   function walk(dir: string, depth: number): void {
     if (depth > maxDepth) return;
-    let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
 
     for (const entry of entries) {
       if (entry.isFile() && ENV_PATTERNS.includes(entry.name)) {
@@ -44,7 +48,7 @@ export function detectSetupIssues(projectRoot: string): SetupIssue[] {
   const issues: SetupIssue[] = [];
 
   // 1. Check for env variable references without .env files
-  const hasEnvFile = ENV_PATTERNS.some(f => existsSync(join(projectRoot, f)));
+  const hasEnvFile = ENV_PATTERNS.some((f) => existsSync(join(projectRoot, f)));
   if (!hasEnvFile) {
     const envRefFound = scanForEnvReferences(projectRoot);
     if (envRefFound) {
@@ -66,7 +70,7 @@ export function detectSetupIssues(projectRoot: string): SetupIssue[] {
 
   // 3. Check for missing lockfile
   const lockfiles = ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock"];
-  if (!lockfiles.some(f => existsSync(join(projectRoot, f)))) {
+  if (!lockfiles.some((f) => existsSync(join(projectRoot, f)))) {
     issues.push({
       type: "missing-lockfile",
       message: "lockfile이 없습니다. 의존성 설치가 느릴 수 있습니다.",
@@ -97,17 +101,28 @@ function scanForEnvReferences(dir: string, depth: number = 0): boolean {
   if (depth > 3) return false;
   const envPatterns = /import\.meta\.env\.|process\.env\.|PUBLIC_|VITE_|NEXT_PUBLIC_/;
 
-  let entries;
-  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
 
   for (const entry of entries) {
     if (entry.isFile() && /\.(ts|js|tsx|jsx|svelte|vue)$/.test(entry.name)) {
       try {
         const content = readFileSync(join(dir, entry.name), "utf8").slice(0, 5000);
         if (envPatterns.test(content)) return true;
-      } catch { continue; }
+      } catch {
+        continue;
+      }
     }
-    if (entry.isDirectory() && !SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+    if (
+      entry.isDirectory() &&
+      !SKIP_DIRS.has(entry.name) &&
+      !entry.name.startsWith(".") &&
+      entry.name !== "node_modules"
+    ) {
       if (scanForEnvReferences(join(dir, entry.name), depth + 1)) return true;
     }
   }
@@ -119,8 +134,12 @@ function countTurboApps(root: string): number {
   for (const dir of ["apps", "packages"]) {
     const base = join(root, dir);
     if (!existsSync(base)) continue;
-    let entries;
-    try { entries = readdirSync(base, { withFileTypes: true }); } catch { continue; }
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(base, { withFileTypes: true });
+    } catch {
+      continue;
+    }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const pkgPath = join(base, entry.name, "package.json");
@@ -129,7 +148,7 @@ function countTurboApps(root: string): number {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>;
         const scripts = pkg.scripts as Record<string, string> | undefined;
         if (scripts?.dev) count++;
-      } catch { continue; }
+      } catch {}
     }
   }
   return count;

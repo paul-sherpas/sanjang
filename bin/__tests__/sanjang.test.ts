@@ -21,7 +21,7 @@ describe("sanjang CLI flag parsing", () => {
     let port = 4000;
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--port" && args[i + 1]) {
-        port = parseInt(args[i + 1]!);
+        port = parseInt(args[i + 1]!, 10);
         i++;
       }
     }
@@ -33,7 +33,7 @@ describe("sanjang CLI flag parsing", () => {
     let port = 4000;
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--port" && args[i + 1]) {
-        port = parseInt(args[i + 1]!);
+        port = parseInt(args[i + 1]!, 10);
         i++;
       }
     }

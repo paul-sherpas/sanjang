@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { createServer, type Server, request as httpRequest, type IncomingMessage } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
@@ -8,20 +8,20 @@ import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
+import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
 import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
 import { aiSlugify, slugify } from "./engine/naming.ts";
 import { allocate, scanPorts, setPortConfig } from "./engine/ports.ts";
 import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
 import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./engine/process.ts";
+import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
+import { generatePrDescription } from "./engine/smart-pr.ts";
 import { listSnapshots, restoreSnapshot, saveSnapshot } from "./engine/snapshot.ts";
 import { getAll, getOne, remove, setCampsDir, upsert } from "./engine/state.ts";
+import { suggestTasks } from "./engine/suggest.ts";
 import { detectWarp, openWarpTab, removeLaunchConfig } from "./engine/warp.ts";
 import { CampWatcher } from "./engine/watcher.ts";
-import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
-import { suggestTasks } from "./engine/suggest.ts";
-import { generatePrDescription } from "./engine/smart-pr.ts";
-import { suggestConfigFix, applyConfigFix } from "./engine/config-hotfix.ts";
 import {
   addWorktree,
   campPath,
@@ -265,47 +265,68 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (existing) clearTimeout(existing);
     if (!autosaveEnabled.has(name)) return;
 
-    autosaveTimers.set(name, setTimeout(async () => {
-      autosaveTimers.delete(name);
-      const pg = getOne(name);
-      if (!pg) return;
-      const wtPath = campPath(name);
-      const files = getChangedFiles(wtPath);
-      if (files.length === 0) return;
+    autosaveTimers.set(
+      name,
+      setTimeout(async () => {
+        autosaveTimers.delete(name);
+        const pg = getOne(name);
+        if (!pg) return;
+        const wtPath = campPath(name);
+        const files = getChangedFiles(wtPath);
+        if (files.length === 0) return;
 
-      try {
-        // Reattach if detached
-        const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
-        if (headRef.status !== 0 && pg.branch) {
-          const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
-          if (cur) {
-            spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, cur], { stdio: "pipe" });
-            spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
+        try {
+          // Reattach if detached
+          const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          });
+          if (headRef.status !== 0 && pg.branch) {
+            const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], {
+              encoding: "utf8",
+              stdio: "pipe",
+            }).stdout?.trim();
+            if (cur) {
+              spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, cur], { stdio: "pipe" });
+              spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
+            }
           }
+          runGit(["-C", wtPath, "add", "-A"], wtPath);
+          runGit(["-C", wtPath, "commit", "-m", `[auto] ${files.length}개 파일 자동 세이브`], wtPath);
+          broadcast({
+            type: "playground-saved",
+            name,
+            data: { message: `[auto] ${files.length}개 파일 자동 세이브`, auto: true },
+          });
+          broadcast({ type: "autosaved", name });
+        } catch {
+          /* ignore */
         }
-        runGit(["-C", wtPath, "add", "-A"], wtPath);
-        runGit(["-C", wtPath, "commit", "-m", `[auto] ${files.length}개 파일 자동 세이브`], wtPath);
-        broadcast({ type: "playground-saved", name, data: { message: `[auto] ${files.length}개 파일 자동 세이브`, auto: true } });
-        broadcast({ type: "autosaved", name });
-      } catch { /* ignore */ }
-    }, AUTOSAVE_DELAY));
+      }, AUTOSAVE_DELAY),
+    );
   }
 
   function startWatcher(name: string): void {
     if (watchers.has(name)) return;
     const wtPath = campPath(name);
-    const watcher = new CampWatcher(wtPath, () => {
-      try {
-        const files = getChangedFiles(wtPath);
-        broadcast({
-          type: "file-changes",
-          name,
-          data: { count: files.length, files, ts: Date.now() },
-        });
-        // Reset autosave timer on any file change
-        if (autosaveEnabled.has(name)) resetAutosaveTimer(name);
-      } catch { /* ignore — worktree may be deleted */ }
-    }, 800);
+    const watcher = new CampWatcher(
+      wtPath,
+      () => {
+        try {
+          const files = getChangedFiles(wtPath);
+          broadcast({
+            type: "file-changes",
+            name,
+            data: { count: files.length, files, ts: Date.now() },
+          });
+          // Reset autosave timer on any file change
+          if (autosaveEnabled.has(name)) resetAutosaveTimer(name);
+        } catch {
+          /* ignore — worktree may be deleted */
+        }
+      },
+      800,
+    );
     watcher.start();
     watchers.set(name, watcher);
   }
@@ -351,7 +372,9 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         if (msg.type === "browser-error" && msg.name) {
           broadcast({ type: "browser-error", name: msg.name, data: msg.data });
         }
-      } catch { /* ignore non-JSON */ }
+      } catch {
+        /* ignore non-JSON */
+      }
     });
   });
 
@@ -394,7 +417,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     // Only allow proxying to known camp ports (prevent SSRF to arbitrary local services)
     const camps = getAll();
-    const camp = camps.find(c => c.fePort === targetPort);
+    const camp = camps.find((c) => c.fePort === targetPort);
     if (!camp) {
       return res.status(403).send("이 포트는 활성 캠프가 아닙니다.");
     }
@@ -402,7 +425,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     const targetPath = req.url || "/";
     const proxyReq = httpRequest(
-      { hostname: "127.0.0.1", port: targetPort, path: targetPath, method: req.method, headers: { ...req.headers, host: `localhost:${targetPort}` } },
+      {
+        hostname: "127.0.0.1",
+        port: targetPort,
+        path: targetPath,
+        method: req.method,
+        headers: { ...req.headers, host: `localhost:${targetPort}` },
+      },
       (proxyRes: IncomingMessage) => {
         const contentType = proxyRes.headers["content-type"] || "";
         const isHtml = contentType.includes("text/html");
@@ -419,8 +448,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
         proxyRes.on("end", () => {
           let body = Buffer.concat(chunks).toString("utf8");
-          const script = INJECTED_SCRIPT
-            .replace("data-camp'", `data-camp'`) // placeholder
+          const script = INJECTED_SCRIPT.replace("data-camp'", `data-camp'`) // placeholder
             .replace("data-sanjang-injected>", `data-sanjang-injected data-camp="${campName}">`);
           // Replace _sp port placeholder with actual sanjang server port
           const finalScript = script.replace(
@@ -443,8 +471,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           // Remove X-Frame-Options / frame-ancestors to allow iframe embedding
           delete headers["x-frame-options"];
           if (typeof headers["content-security-policy"] === "string") {
-            headers["content-security-policy"] = headers["content-security-policy"]
-              .replace(/frame-ancestors[^;]*(;|$)/gi, "");
+            headers["content-security-policy"] = headers["content-security-policy"].replace(
+              /frame-ancestors[^;]*(;|$)/gi,
+              "",
+            );
           }
           res.writeHead(proxyRes.statusCode ?? 200, headers);
           res.end(body);
@@ -511,8 +541,19 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         broadcast({ type: "log", name, source: "sanjang", data: msg });
       });
 
-      const baseCommit = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || undefined;
-      const record: Camp = { name, branch, slot, fePort: actualFePort, bePort, status: "setting-up", baseCommit, parentBranch: branch };
+      const baseCommit =
+        spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() ||
+        undefined;
+      const record: Camp = {
+        name,
+        branch,
+        slot,
+        fePort: actualFePort,
+        bePort,
+        status: "setting-up",
+        baseCommit,
+        parentBranch: branch,
+      };
       upsert(record);
       broadcast({ type: "playground-created", name, data: record });
       res.status(201).json(record);
@@ -559,7 +600,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
         // Self-heal: try to auto-fix before giving up
         const healActions = diagnoseFromLogs(processInfo.feLogs);
-        const autoFixable = healActions.filter(a => a.auto);
+        const autoFixable = healActions.filter((a) => a.auto);
 
         if (autoFixable.length > 0) {
           broadcast({ type: "log", name, source: "sanjang", data: "문제를 발견했습니다. 자동으로 고치는 중..." });
@@ -687,10 +728,16 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     try {
       // Reattach to branch if in detached HEAD state
-      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
+      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
       if (headRef.status !== 0 && pg.branch) {
         // Detached HEAD — move branch pointer to current commit and checkout
-        const currentCommit = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+        const currentCommit = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }).stdout?.trim();
         if (currentCommit) {
           spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, currentCommit], { stdio: "pipe" });
           spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
@@ -701,12 +748,19 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       runGit(["-C", wtPath, "add", "-A"], wtPath);
 
       // Generate commit message with AI
-      const diff = spawnSync("git", ["-C", wtPath, "diff", "--cached", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
+      const diff =
+        spawnSync("git", ["-C", wtPath, "diff", "--cached", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout ||
+        "";
       let message = `${files.length}개 파일 변경`;
       try {
         const aiResult = spawnSync(
           "claude",
-          ["-p", "--model", "haiku", `이 git diff를 한국어 커밋 메시지로 작성해. 한 줄, 50자 이내, 설명 없이 메시지만:\n\n${diff.slice(0, 2000)}`],
+          [
+            "-p",
+            "--model",
+            "haiku",
+            `이 git diff를 한국어 커밋 메시지로 작성해. 한 줄, 50자 이내, 설명 없이 메시지만:\n\n${diff.slice(0, 2000)}`,
+          ],
           { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
         );
         if (aiResult.status === 0 && aiResult.stdout?.trim()) {
@@ -737,7 +791,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     } else {
       autosaveEnabled.delete(name);
       const timer = autosaveTimers.get(name);
-      if (timer) { clearTimeout(timer); autosaveTimers.delete(name); }
+      if (timer) {
+        clearTimeout(timer);
+        autosaveTimers.delete(name);
+      }
     }
     res.json({ autosave: autosaveEnabled.has(name) });
   });
@@ -892,7 +949,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
       const result = spawnSync(
         "claude",
-        ["-p", "--model", "haiku", `이 git diff를 한국어 한 줄(20자 이내)로 요약해. 설명 없이 요약만:\n\n${diff.slice(0, 2000)}`],
+        [
+          "-p",
+          "--model",
+          "haiku",
+          `이 git diff를 한국어 한 줄(20자 이내)로 요약해. 설명 없이 요약만:\n\n${diff.slice(0, 2000)}`,
+        ],
         { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
       );
       const summary = result.status === 0 ? (result.stdout ?? "").trim() : null;
@@ -912,9 +974,15 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       const wtPath = campPath(name);
 
       // 1. Reattach to branch if detached
-      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
+      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
       if (headRef.status !== 0 && pg.branch) {
-        const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+        const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }).stdout?.trim();
         if (cur) {
           spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, cur], { stdio: "pipe" });
           spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
@@ -935,8 +1003,14 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       // 3. Check there are commits to ship (vs base)
       const base = pg.baseCommit;
       const logCheck = base
-        ? spawnSync("git", ["-C", wtPath, "log", "--oneline", `${base}..HEAD`], { encoding: "utf8", stdio: "pipe" }).stdout?.trim()
-        : spawnSync("git", ["-C", wtPath, "log", "--oneline", "-1", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+        ? spawnSync("git", ["-C", wtPath, "log", "--oneline", `${base}..HEAD`], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout?.trim()
+        : spawnSync("git", ["-C", wtPath, "log", "--oneline", "-1", "HEAD"], {
+            encoding: "utf8",
+            stdio: "pipe",
+          }).stdout?.trim();
       if (!logCheck) {
         return res.status(400).json({ error: "보낼 변경사항이 없습니다." });
       }
@@ -951,7 +1025,11 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
       // 5. Push camp branch
       const branchName = pg.branch;
-      const pushResult = spawnSync("git", ["-C", wtPath, "push", "-u", "--force-with-lease", "origin", `HEAD:${branchName}`], { stdio: "pipe" });
+      const pushResult = spawnSync(
+        "git",
+        ["-C", wtPath, "push", "-u", "--force-with-lease", "origin", `HEAD:${branchName}`],
+        { stdio: "pipe" },
+      );
       if (pushResult.status !== 0) throw new Error(pushResult.stderr?.toString() || "push failed");
 
       // Read actions before clearing (used for fallback PR body)
@@ -1030,7 +1108,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
       const result = spawnSync(
         "claude",
-        ["-p", "--model", "haiku", `이 프로젝트에서 PR 전에 돌려야 할 테스트 명령어를 찾아서 실행해줘. .github/workflows/ 디렉토리, package.json scripts, Makefile 등을 확인해. typecheck과 test를 우선 실행하고 결과를 알려줘. 명령어와 결과만 간단히.`],
+        [
+          "-p",
+          "--model",
+          "haiku",
+          `이 프로젝트에서 PR 전에 돌려야 할 테스트 명령어를 찾아서 실행해줘. .github/workflows/ 디렉토리, package.json scripts, Makefile 등을 확인해. typecheck과 test를 우선 실행하고 결과를 알려줘. 명령어와 결과만 간단히.`,
+        ],
         { cwd: wtPath, encoding: "utf8", stdio: "pipe", timeout: 120_000 },
       );
 
@@ -1055,7 +1138,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (!files?.length) return res.status(400).json({ error: "되돌릴 파일을 선택해주세요." });
     // Validate file paths against traversal and shell injection
     for (const file of files) {
-      if (typeof file !== "string" || file.includes("..") || file.startsWith("/") || file.startsWith("-") || /[`$;"'\\|&]/.test(file)) {
+      if (
+        typeof file !== "string" ||
+        file.includes("..") ||
+        file.startsWith("/") ||
+        file.startsWith("-") ||
+        /[`$;"'\\|&]/.test(file)
+      ) {
         return res.status(400).json({ error: `invalid file path: ${file}` });
       }
     }
@@ -1275,7 +1364,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         : ["-C", wtPath, "log", "--oneline", "--format=%h\t%s\t%cr", "--max-count=5", "HEAD"];
       const log = spawnSync("git", logArgs, { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || "";
       if (log) {
-        commits = log.split("\n").map(line => {
+        commits = log.split("\n").map((line) => {
           const [hash = "", message = "", date = ""] = line.split("\t");
           return { hash, message, date };
         });
@@ -1439,7 +1528,9 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         broadcast({ type: "log", name, source: "sanjang", data: msg });
       });
 
-      const baseCommit2 = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || undefined;
+      const baseCommit2 =
+        spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() ||
+        undefined;
       const record: Camp = {
         name,
         branch,
@@ -1516,7 +1607,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           broadcast({ type: "playground-status", name, data: { status: "running", url } });
           startWatcher(name);
           return res.json({ fixed: true, description: fix.description });
-        } catch (retryErr) {
+        } catch (_retryErr) {
           return res.json({ fixed: false, description: "설정을 고쳤지만 시작에 실패했습니다." });
         }
       }
@@ -1565,11 +1656,15 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     // --- merged PRs ---
     let mergedPrs: Array<{ number: number; title: string; mergedAt: string }> = [];
-    const ghResult = spawnSync("gh", ["pr", "list", "--state", "merged", "--limit", "10", "--json", "number,title,mergedAt"], {
-      cwd: projectRoot,
-      stdio: "pipe",
-      encoding: "utf8",
-    });
+    const ghResult = spawnSync(
+      "gh",
+      ["pr", "list", "--state", "merged", "--limit", "10", "--json", "number,title,mergedAt"],
+      {
+        cwd: projectRoot,
+        stdio: "pipe",
+        encoding: "utf8",
+      },
+    );
     if (ghResult.status === 0 && ghResult.stdout) {
       try {
         const parsed: Array<{ number: number; title: string; mergedAt: string }> = JSON.parse(ghResult.stdout);
@@ -1589,8 +1684,6 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       if ((countByDate.get(key) ?? 0) > 0) {
         streak++;
       } else if (key === todayStr) {
-        // Today having 0 commits is ok — streak can start from yesterday
-        continue;
       } else {
         break;
       }

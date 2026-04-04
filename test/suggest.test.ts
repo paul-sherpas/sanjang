@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { suggestTasks, type Suggestion } from "../lib/engine/suggest.ts";
+import { type Suggestion, suggestTasks } from "../lib/engine/suggest.ts";
 
 describe("suggestTasks", () => {
   it("returns an array", async () => {

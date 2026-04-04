@@ -142,10 +142,7 @@ export async function suggestTasks(projectRoot: string): Promise<Suggestion[]> {
   const results: Suggestion[] = [];
 
   // gh-dependent fetches — tolerate failure (gh not installed / no repo)
-  const [issues, prs] = await Promise.allSettled([
-    fetchIssues(projectRoot),
-    fetchMyPrs(projectRoot),
-  ]);
+  const [issues, prs] = await Promise.allSettled([fetchIssues(projectRoot), fetchMyPrs(projectRoot)]);
 
   // PRs first — most actionable ("이어하기")
   if (prs.status === "fulfilled") {

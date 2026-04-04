@@ -16,7 +16,7 @@ for (let i = 0; i < args.length; i++) {
     i++;
   }
   if (args[i] === "--port" && args[i + 1]) {
-    port = parseInt(args[i + 1]!);
+    port = parseInt(args[i + 1]!, 10);
     i++;
   }
   if (args[i] === "--force") {
@@ -60,8 +60,8 @@ if (command === "init") {
     });
     rl.close();
 
-    const idx = parseInt(answer) - 1;
-    if (idx < 0 || idx >= apps.length || isNaN(idx)) {
+    const idx = parseInt(answer, 10) - 1;
+    if (idx < 0 || idx >= apps.length || Number.isNaN(idx)) {
       console.error("⛰ 잘못된 선택입니다.");
       process.exit(1);
     }
@@ -155,10 +155,12 @@ if (command === "init") {
       console.log("");
       const { createInterface } = await import("node:readline");
       const rl = createInterface({ input: process.stdin, output: process.stdout });
-      const answer = await new Promise<string>((r) => { rl.question("  어떤 앱을 띄울까요? [번호]: ", r); });
+      const answer = await new Promise<string>((r) => {
+        rl.question("  어떤 앱을 띄울까요? [번호]: ", r);
+      });
       rl.close();
-      const idx = parseInt(answer) - 1;
-      if (idx < 0 || idx >= apps.length || isNaN(idx)) {
+      const idx = parseInt(answer, 10) - 1;
+      if (idx < 0 || idx >= apps.length || Number.isNaN(idx)) {
         console.error("⛰ 잘못된 선택입니다.");
         process.exit(1);
       }

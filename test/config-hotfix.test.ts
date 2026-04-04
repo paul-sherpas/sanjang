@@ -1,10 +1,10 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, it } from "node:test";
 
-import { suggestConfigFix, applyConfigFix, type ConfigFix } from "../lib/engine/config-hotfix.ts";
+import { applyConfigFix, type ConfigFix, suggestConfigFix } from "../lib/engine/config-hotfix.ts";
 
 describe("config-hotfix — suggestConfigFix", () => {
   it("detects missing env from PUBLIC_* export error", () => {
@@ -64,9 +64,7 @@ describe("config-hotfix — suggestConfigFix", () => {
 
   it("returns null when PUBLIC_* error but no env files exist", () => {
     const dir = mkdtempSync(join(tmpdir(), "sanjang-hotfix-"));
-    const logs = [
-      "does not provide an export named 'PUBLIC_API_URL'",
-    ];
+    const logs = ["does not provide an export named 'PUBLIC_API_URL'"];
 
     const fix = suggestConfigFix(dir, logs);
     // No env files found → the pattern matches but buildFix returns null
@@ -136,7 +134,10 @@ describe("config-hotfix — applyConfigFix", () => {
     // Exactly two entries: '.env' and '.env.local'
     const entries = updated.match(/copyFiles:\s*\[([^\]]*)\]/);
     assert.ok(entries);
-    const items = entries[1]!.split(",").map((s) => s.trim()).filter(Boolean);
+    const items = entries[1]!
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     assert.equal(items.length, 2);
 
     rmSync(dir, { recursive: true, force: true });

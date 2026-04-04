@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { slugify, aiSlugify } from "../lib/engine/naming.ts";
+import { aiSlugify, slugify } from "../lib/engine/naming.ts";
 
 describe("slugify", () => {
   it("converts known Korean to English kebab-case", () => {

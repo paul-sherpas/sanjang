@@ -5,9 +5,8 @@ import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-
-import { createApp } from "../lib/server.ts";
 import { slugify } from "../lib/engine/naming.ts";
+import { createApp } from "../lib/server.ts";
 
 // ---------------------------------------------------------------------------
 // Shared e2e helpers (same pattern as e2e-server.test.ts)
@@ -95,7 +94,9 @@ before(async () => {
 
 after(async () => {
   // Clean up camps
-  interface CampData { name: string }
+  interface CampData {
+    name: string;
+  }
   const { data: camps } = await api<CampData[]>("/api/playgrounds");
   for (const camp of camps) {
     await api(`/api/playgrounds/${camp.name}/stop`, { method: "POST" }).catch(() => {});
@@ -235,7 +236,8 @@ describe("e2e — /api/quick-start negative paths", () => {
 
 describe("slugify — extended edge cases", () => {
   it("handles very long Korean input (100+ chars)", () => {
-    const longKorean = "대시보드 설정 페이지 사용자 관리 목록 검색 필터 정렬 알림 권한 기기 소프트웨어 자산 구성원 보고서 차트 테이블 폼 모달 메뉴 헤더 푸터 사이드바 카드 탭";
+    const longKorean =
+      "대시보드 설정 페이지 사용자 관리 목록 검색 필터 정렬 알림 권한 기기 소프트웨어 자산 구성원 보고서 차트 테이블 폼 모달 메뉴 헤더 푸터 사이드바 카드 탭";
     const result = slugify(longKorean);
     assert.ok(result.length <= 50, `result length ${result.length} should be <= 50`);
     assert.ok(result.length > 0);

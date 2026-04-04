@@ -8,11 +8,20 @@ export function aiSlugify(description: string): string | null {
   try {
     const result = spawnSync(
       "claude",
-      ["-p", "--model", "haiku", `Convert this task description to a kebab-case English slug. Rules: 3-5 words, max 30 chars, lowercase, descriptive (not just one word), no explanation, output ONLY the slug.\n\nExample: "로그인 버튼 색상 변경" → "login-button-color-change"\nExample: "대시보드 차트 추가" → "dashboard-chart-add"\n\nTask: "${description}"`],
+      [
+        "-p",
+        "--model",
+        "haiku",
+        `Convert this task description to a kebab-case English slug. Rules: 3-5 words, max 30 chars, lowercase, descriptive (not just one word), no explanation, output ONLY the slug.\n\nExample: "로그인 버튼 색상 변경" → "login-button-color-change"\nExample: "대시보드 차트 추가" → "dashboard-chart-add"\n\nTask: "${description}"`,
+      ],
       { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
     );
     if (result.status !== 0) return null;
-    const slug = (result.stdout ?? "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/^-+|-+$/g, "");
+    const slug = (result.stdout ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/^-+|-+$/g, "");
     if (!slug || slug.length > 30) return null;
     return slug;
   } catch {

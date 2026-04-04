@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createConnection } from "node:net";
 import { join } from "node:path";
-import type { BroadcastMessage, EventCallback, SanjangConfig } from "../types.ts";
+import type { EventCallback, SanjangConfig } from "../types.ts";
 import { campPath, getProjectRoot } from "./worktree.ts";
 
 interface CampProcessEntry {
@@ -41,7 +41,10 @@ function detectPortFromStdout(logs: string[], timeoutMs: number): Promise<number
           const port = parseInt(match[1], 10);
           // Wait briefly for the port to actually be ready
           const sock = createConnection({ port, host: "localhost" });
-          sock.once("connect", () => { sock.destroy(); resolve(port); });
+          sock.once("connect", () => {
+            sock.destroy();
+            resolve(port);
+          });
           sock.once("error", () => {
             sock.destroy();
             // Port printed but not ready yet, retry

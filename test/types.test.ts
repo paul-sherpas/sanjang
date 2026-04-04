@@ -2,24 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 // Type-only imports — verify the module exports compile correctly
-import type {
-  BroadcastMessage,
-  CacheApplyResult,
-  CacheBuildResult,
-  CacheValidation,
-  Camp,
-  DetectedApp,
-  DetectedProject,
-  DevConfig,
-  DiagnosticsResult,
-  EventCallback,
-  GenerateConfigResult,
-  LockfileInfo,
-  PortAllocation,
-  PortStatus,
-  SanjangConfig,
-  SnapshotInfo,
-} from "../lib/types.ts";
+import type { CacheApplyResult, Camp, PortAllocation, SanjangConfig } from "../lib/types.ts";
 
 describe("types", () => {
   it("Camp interface satisfies expected shape", () => {

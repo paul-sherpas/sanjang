@@ -44,7 +44,7 @@ export function buildFallbackPrBody({ message, actions, diffStat }: FallbackPrBo
 export function buildClaudePrPrompt({ message, diffStat, diff }: ClaudePrPromptOptions): string {
   return [
     "You are writing a GitHub Pull Request description.",
-    'The author described the change as: "' + message + '"',
+    `The author described the change as: "${message}"`,
     "",
     "Here is the diff stat:",
     diffStat || "(no stat)",

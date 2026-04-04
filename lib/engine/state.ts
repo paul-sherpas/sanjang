@@ -34,7 +34,7 @@ function read(): Camp[] {
 function write(records: Camp[]): void {
   ensureDir();
   // Atomic write: write to temp file then rename to prevent corruption
-  const tmp = stateFile() + ".tmp";
+  const tmp = `${stateFile()}.tmp`;
   writeFileSync(tmp, JSON.stringify(records, null, 2), "utf8");
   renameSync(tmp, stateFile());
 }

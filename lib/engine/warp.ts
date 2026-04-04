@@ -24,7 +24,7 @@ export function detectWarp(): WarpDetectResult {
  * Opens as a new tab in the existing Warp window (not a new window).
  * The tab title naturally shows the directory name (= camp name).
  */
-export function openWarpTab(campName: string, worktreePath: string): WarpOpenResult {
+export function openWarpTab(_campName: string, worktreePath: string): WarpOpenResult {
   const { installed } = detectWarp();
   if (!installed) {
     return { opened: false, terminal: null, path: worktreePath };

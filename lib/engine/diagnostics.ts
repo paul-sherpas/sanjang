@@ -31,9 +31,7 @@ function checkPortConflict(processInfo: ProcessInfo): DiagnosticCheck {
     name: "port-conflict",
     status: hit ? "error" : "ok",
     detail: hit ? "다른 프로그램과 충돌이 발생했습니다." : "정상.",
-    guide: hit
-      ? '"중지" → "시작"을 눌러보세요. 계속되면 "삭제" 후 다시 만들어보세요.'
-      : null,
+    guide: hit ? '"중지" → "시작"을 눌러보세요. 계속되면 "삭제" 후 다시 만들어보세요.' : null,
   };
 }
 
@@ -69,9 +67,7 @@ function checkFePort(pg: PlaygroundInfo): DiagnosticCheck {
   return {
     name: "fe-status",
     status: output?.length ? "ok" : "warn",
-    detail: output?.length
-      ? "Frontend 서버가 실행 중입니다."
-      : "Frontend 서버가 응답하지 않습니다.",
+    detail: output?.length ? "Frontend 서버가 실행 중입니다." : "Frontend 서버가 응답하지 않습니다.",
     guide: !output?.length ? '"시작" 버튼을 눌러보세요.' : null,
   };
 }

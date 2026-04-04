@@ -1,8 +1,8 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it } from "node:test";
 
 import { deepFindEnvFiles, detectSetupIssues } from "../lib/engine/smart-init.ts";
 
@@ -45,9 +45,9 @@ describe("smart-init — detectSetupIssues", () => {
     const dir = mkdtempSync(join(tmpdir(), "sanjang-issue-"));
     // Source code references PUBLIC_API_URL but no .env
     mkdirSync(join(dir, "src"), { recursive: true });
-    writeFileSync(join(dir, "src", "config.ts"), 'const url = import.meta.env.PUBLIC_API_URL;');
+    writeFileSync(join(dir, "src", "config.ts"), "const url = import.meta.env.PUBLIC_API_URL;");
     const issues = detectSetupIssues(dir);
-    assert.ok(issues.some(i => i.type === "env-reference-no-file"));
+    assert.ok(issues.some((i) => i.type === "env-reference-no-file"));
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -55,9 +55,9 @@ describe("smart-init — detectSetupIssues", () => {
     const dir = mkdtempSync(join(tmpdir(), "sanjang-ok-"));
     writeFileSync(join(dir, ".env"), "PUBLIC_API_URL=http://localhost");
     mkdirSync(join(dir, "src"), { recursive: true });
-    writeFileSync(join(dir, "src", "config.ts"), 'const url = import.meta.env.PUBLIC_API_URL;');
+    writeFileSync(join(dir, "src", "config.ts"), "const url = import.meta.env.PUBLIC_API_URL;");
     const issues = detectSetupIssues(dir);
-    assert.ok(!issues.some(i => i.type === "env-reference-no-file"));
+    assert.ok(!issues.some((i) => i.type === "env-reference-no-file"));
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -65,7 +65,7 @@ describe("smart-init — detectSetupIssues", () => {
     const dir = mkdtempSync(join(tmpdir(), "sanjang-bun-"));
     writeFileSync(join(dir, "bun.lock"), "{}");
     const issues = detectSetupIssues(dir);
-    assert.ok(issues.some(i => i.type === "bun-cache-skip"));
+    assert.ok(issues.some((i) => i.type === "bun-cache-skip"));
     rmSync(dir, { recursive: true, force: true });
   });
 });

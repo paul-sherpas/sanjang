@@ -1,6 +1,6 @@
-import { existsSync, copyFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
 import { execSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Diagnosis: pattern-match logs to identify fixable issues
@@ -94,7 +94,12 @@ export function executeHeal(
     case "reinstall": {
       if (!setupCommand) return { action, success: false, detail: "설치 명령이 없습니다." };
       try {
-        execSync(setupCommand, { cwd: campPath, stdio: "pipe", timeout: 120_000, shell: true } as unknown as import("node:child_process").ExecSyncOptions);
+        execSync(setupCommand, {
+          cwd: campPath,
+          stdio: "pipe",
+          timeout: 120_000,
+          shell: true,
+        } as unknown as import("node:child_process").ExecSyncOptions);
         return { action, success: true };
       } catch {
         return { action, success: false, detail: "설치에 실패했습니다." };
@@ -111,10 +116,16 @@ export function executeHeal(
             mkdirSync(dirname(dst), { recursive: true });
             copyFileSync(src, dst);
             copied++;
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
       }
-      return { action, success: copied > 0, detail: copied > 0 ? `${copied}개 파일 복사됨` : "복사할 파일이 없습니다." };
+      return {
+        action,
+        success: copied > 0,
+        detail: copied > 0 ? `${copied}개 파일 복사됨` : "복사할 파일이 없습니다.",
+      };
     }
 
     case "restart":

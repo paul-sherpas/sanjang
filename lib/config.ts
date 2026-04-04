@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { DetectedApp, DetectedProject, GenerateConfigResult, SanjangConfig } from "./types.ts";
 import { deepFindEnvFiles, detectSetupIssues } from "./engine/smart-init.ts";
+import type { DetectedApp, DetectedProject, GenerateConfigResult, SanjangConfig } from "./types.ts";
 
 const CONFIG_FILE: string = "sanjang.config.js";
 
@@ -218,8 +218,12 @@ function detectTurboMainApp(root: string): TurboAppInfo | null {
   for (const dir of appDirs) {
     const base = join(root, dir);
     if (!existsSync(base)) continue;
-    let entries;
-    try { entries = readdirSync(base, { withFileTypes: true }); } catch { continue; }
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(base, { withFileTypes: true });
+    } catch {
+      continue;
+    }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       // Skip storybook, demo, docs apps
@@ -234,12 +238,12 @@ function detectTurboMainApp(root: string): TurboAppInfo | null {
         const portMatch = devScript.match(/--port\s+(\d+)/);
         const port = portMatch?.[1] ? parseInt(portMatch[1], 10) : 3000;
         candidates.push({ name: entry.name, port });
-      } catch { continue; }
+      } catch {}
     }
   }
 
   // Prefer app with explicit port, then first candidate
-  return candidates.find(c => c.port !== 3000) ?? candidates[0] ?? null;
+  return candidates.find((c) => c.port !== 3000) ?? candidates[0] ?? null;
 }
 
 function detectPackageManager(root: string): string {
@@ -284,7 +288,7 @@ export function generateConfig(
   );
 
   // Detect potential issues
-  const issues = detectSetupIssues(detectRoot);
+  const _issues = detectSetupIssues(detectRoot);
 
   const lines = [
     "export default {",
