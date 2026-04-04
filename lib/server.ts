@@ -16,7 +16,7 @@ import { buildClaudePrPrompt, buildFallbackPrBody } from "./engine/pr.ts";
 import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./engine/process.ts";
 import { listSnapshots, restoreSnapshot, saveSnapshot } from "./engine/snapshot.ts";
 import { getAll, getOne, remove, setCampsDir, upsert } from "./engine/state.ts";
-import { detectWarp, openWarpTab } from "./engine/warp.ts";
+import { detectWarp, openWarpTab, removeLaunchConfig } from "./engine/warp.ts";
 import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
 import { suggestTasks } from "./engine/suggest.ts";
 import { generatePrDescription } from "./engine/smart-pr.ts";
@@ -429,10 +429,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       stopCamp(name);
       await removeWorktree(name);
       remove(name);
+      removeLaunchConfig(name);
       broadcast({ type: "playground-deleted", name, data: null });
       res.json({ deleted: true });
     } catch (err) {
       remove(name);
+      removeLaunchConfig(name);
       broadcast({ type: "playground-deleted", name, data: null });
       res.json({ deleted: true, warning: (err as Error).message });
     }
@@ -923,16 +925,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ running: runningTasks.has(req.params.name) });
   });
 
-  // POST /api/playgrounds/:name/enter — 캠프 진입 (전체 정보 + Warp 탭 열기)
+  // POST /api/playgrounds/:name/enter — 캠프 진입 (정보 조회만, 터미널은 별도)
   app.post("/api/playgrounds/:name/enter", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: "not found" });
 
     const wtPath = campPath(name);
-
-    // Warp 탭 열기 시도
-    const terminal = warpStatus.installed ? openWarpTab(wtPath) : { opened: false, terminal: null, path: wtPath };
 
     // 변경사항 조회
     let changes: { count: number; files: ChangedFile[]; actions: ActionEntry[] } = { count: 0, files: [], actions: [] };
@@ -946,19 +945,19 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({
       camp: pg,
       changes,
-      terminal,
+      warpInstalled: warpStatus.installed,
       previewUrl: pg.status === "running" ? `http://localhost:${pg.fePort}` : null,
     });
   });
 
-  // POST /api/playgrounds/:name/open-terminal — 터미널만 열기
+  // POST /api/playgrounds/:name/open-terminal — 이름 있는 Warp 탭 열기
   app.post("/api/playgrounds/:name/open-terminal", (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: "not found" });
 
     const wtPath = campPath(name);
-    const result = openWarpTab(wtPath);
+    const result = openWarpTab(name, wtPath);
     res.json(result);
   });
 

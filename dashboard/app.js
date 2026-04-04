@@ -1124,7 +1124,7 @@ function exitWorkspace() {
 window.exitWorkspace = exitWorkspace;
 
 function renderWorkspace(data) {
-  const { camp, changes, terminal, previewUrl } = data;
+  const { camp, changes, warpInstalled, previewUrl } = data;
 
   // Header
   document.getElementById('ws-title').textContent = `캠프: ${camp.name}`;
@@ -1179,14 +1179,9 @@ function renderWorkspace(data) {
     </span>`;
   }
 
-  // Terminal button label
+  // Terminal button label — Warp 설치 여부에 따라 표시
   const termBtn = document.getElementById('ws-terminal-btn');
-  if (terminal && terminal.opened) {
-    termBtn.textContent = '💻 Warp에서 열림 ✓';
-    setTimeout(() => { termBtn.textContent = '💻 터미널 열기'; }, 3000);
-  } else if (terminal && !terminal.terminal) {
-    termBtn.textContent = '💻 경로 복사';
-  }
+  termBtn.textContent = warpInstalled ? '💻 터미널 열기' : '💻 경로 복사';
 
   // Log — show existing logs
   updateWorkspaceLog(camp.name);
@@ -1276,10 +1271,12 @@ window.wsReset = function() {
 
 window.wsOpenTerminal = async function() {
   if (!currentWorkspace) return;
+  const termBtn = document.getElementById('ws-terminal-btn');
   try {
     const result = await api('POST', `/api/playgrounds/${currentWorkspace}/open-terminal`);
     if (result.opened) {
-      toast('Warp에서 열렸습니다', 'success');
+      termBtn.textContent = '💻 열림 ✓';
+      setTimeout(() => { termBtn.textContent = '💻 터미널 열기'; }, 2000);
     } else {
       // Fallback: copy path
       const path = result.path;
