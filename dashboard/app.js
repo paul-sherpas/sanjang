@@ -1241,9 +1241,22 @@ function renderWorkspace(data) {
       previewEl.querySelector('.ws-preview-fallback').style.display = 'flex';
     });
   } else {
-    previewEl.innerHTML = `<span style="color:var(--text-muted);font-size:13px">
-      서버가 실행 중이 아닙니다. 먼저 시작해주세요.
-    </span>`;
+    previewEl.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;user-select:none;">
+        <div style="width:4px;height:4px;image-rendering:pixelated;color:transparent;box-shadow:
+          /* tent peak */
+          12px 0 0 #6b7394,
+          8px 4px 0 #6b7394, 12px 4px 0 #6b7394, 16px 4px 0 #6b7394,
+          4px 8px 0 #6b7394, 8px 8px 0 #6b7394, 12px 8px 0 #6b7394, 16px 8px 0 #6b7394, 20px 8px 0 #6b7394,
+          0px 12px 0 #4a5170, 4px 12px 0 #4a5170, 8px 12px 0 #4a5170, 12px 12px 0 #4a5170, 16px 12px 0 #4a5170, 20px 12px 0 #4a5170, 24px 12px 0 #4a5170,
+          /* zzz */
+          36px 0 0 #4a5170, 40px 4px 0 #4a5170, 36px 8px 0 #4a5170;
+          transform:scale(2);margin-bottom:8px;
+        "></div>
+        <div style="color:var(--text-muted);font-size:14px;text-align:center;margin-top:24px;">
+          캠프가 자고 있어유... zzZ
+        </div>
+      </div>`;
   }
 
   // Terminal button label
@@ -1737,149 +1750,642 @@ window.autoFix = async function autoFix(name) {
 };
 
 // ---------------------------------------------------------------------------
-// Onboarding Tutorial
+// Sherpa Guide Mode (replaces overlay onboarding)
 // ---------------------------------------------------------------------------
 
 const ONBOARDING_KEY = 'sanjang-onboarded';
 
-const onboardingSteps = [
-  {
-    target: '#quickstart-input',
-    title: '캠프 만들기',
-    text: '하고 싶은 걸 입력하면 AI가 캠프를 자동으로 만들어줘요.',
-    position: 'bottom',
-  },
-  {
-    target: '#ws-preview',
-    title: '프리뷰 확인',
-    text: '캠프에 들어가면 전체화면으로 프리뷰를 볼 수 있어요.',
-    position: 'center',
-    waitForWorkspace: true,
-  },
-  {
-    target: '#ws-save-btn',
-    title: '세이브하기',
-    text: '변경사항이 있으면 세이브 버튼으로 저장해요. 게임 세이브처럼요!',
-    position: 'left',
-    waitForWorkspace: true,
-  },
+const SHERPA_GUIDE = [
+  "여기에 하고 싶은 거 적으면 되유. AI가 캠프 만들어줄겨.",
+  "캠프 들어가면 프리뷰 전체화면으로 보여유. 편하쥬?",
+  "세이브는 게임 세이브처럼 저장이여유. 💾 버튼 누르면 되유.",
+  "팀에 보내기 누르면 PR 만들어주유. 셰르파가 다 해줄겨.",
+  "그럼 이제 시작해봐유. 화이팅이여유~ 🏔️",
 ];
 
-function showOnboarding() {
-  if (localStorage.getItem(ONBOARDING_KEY)) return;
-  let step = 0;
+// ---------------------------------------------------------------------------
+// Sherpa Mode System (guide ↔ grumpy toggle)
+// ---------------------------------------------------------------------------
 
-  function show() {
-    // Remove previous
-    document.querySelector('.onboarding-overlay')?.remove();
+let sherpaInterval = null;
+let sherpaMode = 'grumpy'; // 'guide' or 'grumpy'
+let sherpaQueue = [];
+let sherpaIdx = 0;
 
-    if (step >= onboardingSteps.length) {
-      localStorage.setItem(ONBOARDING_KEY, '1');
-      return;
-    }
-
-    const s = onboardingSteps[step];
-
-    // Skip workspace steps if not in workspace
-    if (s.waitForWorkspace && !currentWorkspace) {
-      step++;
-      show();
-      return;
-    }
-
-    const el = document.querySelector(s.target);
-    if (!el) { step++; show(); return; }
-
-    const overlay = document.createElement('div');
-    overlay.className = 'onboarding-overlay';
-
-    const rect = el.getBoundingClientRect();
-    const highlight = document.createElement('div');
-    highlight.className = 'onboarding-highlight';
-    highlight.style.top = `${rect.top - 4}px`;
-    highlight.style.left = `${rect.left - 4}px`;
-    highlight.style.width = `${rect.width + 8}px`;
-    highlight.style.height = `${rect.height + 8}px`;
-    overlay.appendChild(highlight);
-
-    const tooltip = document.createElement('div');
-    tooltip.className = 'onboarding-tooltip';
-    tooltip.innerHTML = `
-      <div class="onboarding-title">${s.title}</div>
-      <div class="onboarding-text">${s.text}</div>
-      <div class="onboarding-actions">
-        <span class="onboarding-step">${step + 1}/${onboardingSteps.length}</span>
-        <button class="btn btn-ghost btn-sm" onclick="skipOnboarding()">건너뛰기</button>
-        <button class="btn btn-primary btn-sm" onclick="nextOnboardingStep()">${step === onboardingSteps.length - 1 ? '완료' : '다음'}</button>
-      </div>`;
-
-    // Position tooltip near target
-    if (s.position === 'bottom') {
-      tooltip.style.top = `${rect.bottom + 12}px`;
-      tooltip.style.left = `${Math.max(12, rect.left)}px`;
-    } else if (s.position === 'left') {
-      tooltip.style.top = `${rect.top}px`;
-      tooltip.style.right = `${window.innerWidth - rect.left + 12}px`;
-    } else {
-      tooltip.style.top = '50%';
-      tooltip.style.left = '50%';
-      tooltip.style.transform = 'translate(-50%, -50%)';
-    }
-
-    overlay.appendChild(tooltip);
-    document.body.appendChild(overlay);
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
+  return a;
+}
 
-  window.nextOnboardingStep = function() {
-    step++;
-    show();
-  };
+function setSherpaMode(mode) {
+  sherpaMode = mode;
+  sherpaIdx = 0;
+  sherpaQueue = mode === 'guide' ? [...SHERPA_GUIDE] : shuffleArray(SHERPA_QUOTES);
 
-  window.skipOnboarding = function() {
-    document.querySelector('.onboarding-overlay')?.remove();
-    localStorage.setItem(ONBOARDING_KEY, '1');
-  };
+  const el = document.getElementById('sherpa-quote');
+  const speech = document.getElementById('sherpa-speech');
+  if (!el || !speech) return;
 
-  // Start first step (only if on portal/quickstart visible)
-  show();
+  // Visual mode indicator
+  speech.classList.toggle('guide-mode', mode === 'guide');
+
+  // Fade transition to first message
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.textContent = sherpaQueue[0];
+    el.style.opacity = '1';
+  }, 300);
+}
+
+function advanceSherpa() {
+  const el = document.getElementById('sherpa-quote');
+  if (!el) return;
+
+  el.style.opacity = '0';
+  setTimeout(() => {
+    sherpaIdx++;
+    if (sherpaIdx >= sherpaQueue.length) {
+      if (sherpaMode === 'guide') {
+        // Guide done → switch to grumpy
+        localStorage.setItem(ONBOARDING_KEY, '1');
+        setSherpaMode('grumpy');
+        return;
+      }
+      // Reshuffle grumpy quotes
+      sherpaQueue = shuffleArray(SHERPA_QUOTES);
+      sherpaIdx = 0;
+    }
+    el.textContent = sherpaQueue[sherpaIdx];
+    el.style.opacity = '1';
+  }, 500);
 }
 
 // ---------------------------------------------------------------------------
-// Sherpa Quote Rotation
+// Basecamp Scene — Time-based Himalaya SVG
 // ---------------------------------------------------------------------------
+
+const SCENE_THEMES = {
+  dawn: {
+    skyGradient: [['0%','#050810'],['60%','#0a1028'],['100%','#141830']],
+    farRange: '#1a2040',
+    midRange: '#141a30',
+    ground: '#12151e',
+    snowColor: 'rgba(200,215,240,0.35)',
+    snowHighlight: 'rgba(220,230,250,0.4)',
+  },
+  morning: {
+    skyGradient: [['0%','#1a2540'],['40%','#2d3a5c'],['70%','#5c4a6e'],['100%','#c4785a']],
+    farRange: '#2a3058',
+    midRange: '#1e2444',
+    ground: '#12151e',
+    snowColor: 'rgba(255,220,180,0.45)',
+    snowHighlight: 'rgba(255,200,150,0.55)',
+  },
+  day: {
+    skyGradient: [['0%','#1a3050'],['50%','#2a4a6a'],['100%','#3a5a7a']],
+    farRange: '#253a58',
+    midRange: '#1a2e48',
+    ground: '#12151e',
+    snowColor: 'rgba(255,255,255,0.5)',
+    snowHighlight: 'rgba(255,255,255,0.6)',
+  },
+  evening: {
+    skyGradient: [['0%','#060810'],['40%','#0e1530'],['75%','#1a1535'],['100%','#12151e']],
+    farRange: '#182040',
+    midRange: '#121830',
+    ground: '#12151e',
+    snowColor: 'rgba(200,180,230,0.35)',
+    snowHighlight: 'rgba(220,200,240,0.4)',
+  },
+};
+
+function renderBasecampScene() {
+  const container = document.getElementById('bc-scene-container');
+  if (!container) return;
+
+  const P = 4; // pixel size (4px grid)
+  const hour = new Date().getHours();
+  let period;
+  if (hour >= 0 && hour < 6) period = 'dawn';
+  else if (hour >= 6 && hour < 12) period = 'morning';
+  else if (hour >= 12 && hour < 18) period = 'day';
+  else period = 'evening';
+
+  const theme = SCENE_THEMES[period];
+
+  // Build gradient stops
+  const stops = theme.skyGradient.map(([offset, color]) =>
+    `<stop offset="${offset}" stop-color="${color}"/>`
+  ).join('');
+
+  // --- Stars ---
+  let starsHtml = '';
+  if (period === 'dawn') {
+    const starPositions = [
+      [45,18],[120,30],[200,12],[280,25],[360,8],[440,22],[520,15],[590,28],[150,40],[400,35],[60,42],[500,38],[330,10]
+    ];
+    starsHtml = starPositions.map(([x,y]) =>
+      `<rect x="${x}" y="${y}" width="2" height="2" fill="#fff" opacity="${0.4 + Math.random()*0.4}"><animate attributeName="opacity" values="${0.3};${0.8};${0.3}" dur="${1.5 + Math.random()*2}s" repeatCount="indefinite"/></rect>`
+    ).join('');
+    // Crescent moon (pixel)
+    starsHtml += `
+      <rect x="576" y="20" width="${P}" height="${P}" fill="#c8cee6" opacity="0.3"/>
+      <rect x="580" y="16" width="${P}" height="${P}" fill="#c8cee6" opacity="0.3"/>
+      <rect x="580" y="20" width="${P}" height="${P}" fill="#c8cee6" opacity="0.25"/>
+      <rect x="584" y="16" width="${P}" height="${P}" fill="#c8cee6" opacity="0.3"/>
+      <rect x="584" y="20" width="${P}" height="${P}" fill="#c8cee6" opacity="0.15"/>
+      <rect x="588" y="20" width="${P}" height="${P}" fill="#c8cee6" opacity="0.3"/>
+      <rect x="580" y="24" width="${P}" height="${P}" fill="#c8cee6" opacity="0.25"/>
+      <rect x="584" y="24" width="${P}" height="${P}" fill="#c8cee6" opacity="0.3"/>
+    `;
+  } else if (period === 'morning') {
+    const starPositions = [[120,20],[400,15],[550,30]];
+    starsHtml = starPositions.map(([x,y]) =>
+      `<rect x="${x}" y="${y}" width="2" height="2" fill="#fff" opacity="0.2"/>`
+    ).join('');
+  } else if (period === 'day') {
+    // Pixel clouds (4px grid)
+    starsHtml = `
+      <g opacity="0.12">
+        <rect x="104" y="28" width="8" height="4" fill="#fff"/>
+        <rect x="100" y="32" width="16" height="4" fill="#fff"/>
+        <rect x="108" y="36" width="4" height="4" fill="#fff"/>
+        <rect x="436" y="24" width="12" height="4" fill="#fff"/>
+        <rect x="432" y="28" width="20" height="4" fill="#fff"/>
+        <rect x="440" y="32" width="8" height="4" fill="#fff"/>
+      </g>
+    `;
+  } else {
+    const starPositions = [
+      [80,15],[160,35],[250,10],[340,28],[430,18],[510,32],[590,12],[140,45],[380,40],[620,25]
+    ];
+    starsHtml = starPositions.map(([x,y]) =>
+      `<rect x="${x}" y="${y}" width="2" height="2" fill="#fff" opacity="${0.3 + Math.random()*0.5}"><animate attributeName="opacity" values="${0.2};${0.7};${0.2}" dur="${2 + Math.random()*2}s" repeatCount="indefinite"/></rect>`
+    ).join('');
+  }
+
+  // --- Mountains ---
+  const farRangePoly = `0,220 0,150 20,150 20,140 40,140 40,125 55,125 55,115 70,115 70,105 85,105 85,95
+    95,95 95,85 105,85 105,80 115,80 115,85 125,85 125,95 135,95 135,105
+    150,105 150,115 165,115 165,125 180,125 180,135 200,135 200,145 220,145
+    220,135 235,135 235,120 250,120 250,105 260,105 260,90 270,90 270,78 280,78
+    280,70 288,70 288,62 295,62 295,56 302,56 302,50 308,50 308,45 314,45
+    314,50 320,50 320,56 326,56 326,65 335,65 335,78 345,78 345,90
+    355,90 355,105 370,105 370,120 385,120 385,135 400,135
+    400,125 415,125 415,110 425,110 425,98 435,98 435,88 445,88 445,78
+    450,78 450,70 456,70 456,64 462,64 462,58 466,58 466,54 470,54
+    470,50 474,50 474,46 478,46 478,50 482,50 482,56 486,56
+    486,64 492,64 492,72 498,72 498,82 508,82 508,95 518,95
+    518,108 530,108 530,120 545,120 545,135 560,135
+    560,125 570,125 570,112 580,112 580,100 590,100 590,88 598,88 598,78
+    605,78 605,70 612,70 612,76 618,76 618,85 625,85 625,95
+    635,95 635,108 645,108 645,120 658,120 658,135 680,135 680,220`;
+
+  const midRangePoly = `0,220 0,170 30,170 30,160 60,160 60,152 80,152 80,160 110,160 110,168
+    140,168 140,158 160,158 160,148 175,148 175,140 188,140 188,135 198,135 198,140
+    210,140 210,150 230,150 230,162 260,162 260,155 280,155 280,145 295,145 295,138
+    310,138 310,145 330,145 330,155 350,155 350,165
+    380,165 380,155 400,155 400,148 415,148 415,140 425,140 425,135 432,135 432,140
+    440,140 440,150 460,150 460,160 480,160 480,168
+    510,168 510,158 530,158 530,148 545,148 545,142 555,142 555,148
+    565,148 565,158 585,158 585,165 610,165 610,158 630,158 630,165 660,165 660,170 680,170 680,220`;
+
+  // --- Snow caps (4px grid) ---
+  const snowCaps = `
+    <!-- Main peak snow -->
+    <rect x="308" y="45" width="${P*2}" height="${P}" fill="${theme.snowHighlight}"/>
+    <rect x="304" y="49" width="${P*4}" height="${P}" fill="${theme.snowColor}"/>
+    <!-- Second peak snow -->
+    <rect x="474" y="46" width="${P*2}" height="${P}" fill="${theme.snowHighlight}"/>
+    <rect x="470" y="50" width="${P*4}" height="${P}" fill="${theme.snowColor}"/>
+    <!-- Smaller peaks -->
+    <rect x="104" y="80" width="${P*2}" height="${P}" fill="${theme.snowHighlight}"/>
+    <rect x="604" y="70" width="${P*2}" height="${P}" fill="${theme.snowHighlight}"/>
+    <!-- Mid-range snow -->
+    <rect x="188" y="135" width="${P*2}" height="${P}" fill="${theme.snowColor}" opacity="0.5"/>
+    <rect x="424" y="135" width="${P*2}" height="${P}" fill="${theme.snowColor}" opacity="0.5"/>
+    <rect x="544" y="142" width="${P*2}" height="${P}" fill="${theme.snowColor}" opacity="0.5"/>
+  `;
+
+  // --- Ground + texture ---
+  const groundHtml = `
+    <rect x="0" y="185" width="680" height="35" fill="${theme.ground}"/>
+    <rect x="50" y="188" width="8" height="3" fill="#1a1d28" opacity="0.5"/>
+    <rect x="200" y="190" width="6" height="2" fill="#1a1d28" opacity="0.4"/>
+    <rect x="350" y="187" width="10" height="3" fill="#1a1d28" opacity="0.5"/>
+    <rect x="500" y="191" width="7" height="2" fill="#1a1d28" opacity="0.4"/>
+    <rect x="620" y="189" width="5" height="3" fill="#1a1d28" opacity="0.5"/>
+  `;
+
+  // --- Shared basecamp elements (all 4px grid pixel art) ---
+
+  const tents = `
+    <!-- Yellow expedition tent (pixel pyramid) -->
+    <g>
+      <rect x="88" y="172" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="84" y="176" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="88" y="176" width="${P}" height="${P}" fill="#a08818"/>
+      <rect x="92" y="176" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="80" y="180" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="84" y="180" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="88" y="180" width="${P}" height="${P}" fill="#2c2210"/>
+      <rect x="92" y="180" width="${P}" height="${P}" fill="#c8a820"/>
+      <rect x="96" y="180" width="${P}" height="${P}" fill="#c8a820"/>
+    </g>
+    <!-- Blue dome tent (pixel) -->
+    <g>
+      <rect x="520" y="176" width="${P}" height="${P}" fill="#2855a0"/>
+      <rect x="524" y="176" width="${P}" height="${P}" fill="#2855a0"/>
+      <rect x="516" y="180" width="${P}" height="${P}" fill="#2855a0"/>
+      <rect x="520" y="180" width="${P}" height="${P}" fill="#2855a0"/>
+      <rect x="524" y="180" width="${P}" height="${P}" fill="#1a2040"/>
+      <rect x="528" y="180" width="${P}" height="${P}" fill="#2855a0"/>
+      <rect x="532" y="180" width="${P}" height="${P}" fill="#2855a0"/>
+    </g>
+    <!-- Green small tent (pixel) -->
+    <g>
+      <rect x="580" y="176" width="${P}" height="${P}" fill="#1e8040"/>
+      <rect x="576" y="180" width="${P}" height="${P}" fill="#1e8040"/>
+      <rect x="580" y="180" width="${P}" height="${P}" fill="#166030"/>
+      <rect x="584" y="180" width="${P}" height="${P}" fill="#1e8040"/>
+    </g>
+    <!-- Red expedition tent (pixel) -->
+    <g>
+      <rect x="448" y="172" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="444" y="176" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="448" y="176" width="${P}" height="${P}" fill="#902020"/>
+      <rect x="452" y="176" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="440" y="180" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="444" y="180" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="448" y="180" width="${P}" height="${P}" fill="#401010"/>
+      <rect x="452" y="180" width="${P}" height="${P}" fill="#b83030"/>
+      <rect x="456" y="180" width="${P}" height="${P}" fill="#b83030"/>
+    </g>
+  `;
+
+  const flagColors = ['#e74c3c','#f39c12','#fff','#2ecc71','#3498db'];
+  const prayerFlags1 = flagColors.map((c, i) =>
+    `<rect x="${156 + i*8}" y="172" width="${P}" height="${P}" fill="${c}" opacity="0.7"/>`
+  ).join('') + flagColors.map((c, i) =>
+    `<rect x="${156 + i*8}" y="168" width="${P}" height="1" fill="#4a5170" opacity="0.5"/>`
+  ).join('');
+
+  const prayerFlags2 = flagColors.map((c, i) =>
+    `<rect x="${420 + i*8}" y="168" width="${P}" height="${P}" fill="${c}" opacity="0.6"/>`
+  ).join('') + flagColors.map((c, i) =>
+    `<rect x="${420 + i*8}" y="164" width="${P}" height="1" fill="#4a5170" opacity="0.4"/>`
+  ).join('');
+
+  const supplies = `
+    <!-- Supply crates (pixel) -->
+    <rect x="128" y="180" width="${P*2}" height="${P}" fill="#6b4a28"/>
+    <rect x="128" y="180" width="${P*2}" height="1" fill="#8b6a38"/>
+    <rect x="128" y="176" width="${P*2}" height="${P}" fill="#5a3a20"/>
+    <rect x="128" y="176" width="${P*2}" height="1" fill="#7a5a30"/>
+    <rect x="136" y="180" width="${P}" height="${P}" fill="#5a3a20"/>
+    <!-- Oxygen tanks (pixel) -->
+    <rect x="472" y="180" width="${P}" height="${P}" fill="#4a6a8a"/>
+    <rect x="472" y="176" width="${P}" height="${P}" fill="#6a8aaa"/>
+    <rect x="476" y="180" width="${P}" height="${P}" fill="#4a6a8a"/>
+    <rect x="476" y="176" width="${P}" height="${P}" fill="#6a8aaa"/>
+    <!-- Signpost (pixel) -->
+    <rect x="300" y="172" width="${P}" height="${P*3}" fill="#5a4a30"/>
+    <rect x="296" y="172" width="${P*3}" height="${P}" fill="#6b5a38"/>
+    <rect x="308" y="173" width="${P}" height="2" fill="#6b5a38"/>
+    <!-- Rope coil (pixel) -->
+    <rect x="600" y="176" width="${P}" height="${P}" fill="#8b7a50"/>
+    <rect x="604" y="176" width="${P}" height="${P}" fill="#8b7a50"/>
+    <rect x="596" y="180" width="${P}" height="${P}" fill="#8b7a50"/>
+    <rect x="608" y="180" width="${P}" height="${P}" fill="#8b7a50"/>
+    <rect x="600" y="184" width="${P}" height="${P}" fill="#8b7a50"/>
+    <rect x="604" y="184" width="${P}" height="${P}" fill="#8b7a50"/>
+    <!-- Ice axe (pixel) -->
+    <rect x="144" y="168" width="${P}" height="${P}" fill="#8090b0"/>
+    <rect x="144" y="172" width="${P}" height="${P}" fill="#6b5a38"/>
+    <rect x="144" y="176" width="${P}" height="${P}" fill="#6b5a38"/>
+    <rect x="140" y="168" width="${P}" height="${P}" fill="#aab0c0"/>
+  `;
+
+  // --- Stone ring around campfire (4px grid) ---
+  const stoneRing = `
+    <rect x="320" y="184" width="${P}" height="${P}" fill="#3a3a40"/>
+    <rect x="324" y="184" width="${P}" height="${P}" fill="#454550"/>
+    <rect x="336" y="184" width="${P}" height="${P}" fill="#454550"/>
+    <rect x="340" y="184" width="${P}" height="${P}" fill="#3a3a40"/>
+    <rect x="318" y="180" width="${P}" height="${P}" fill="#454550"/>
+    <rect x="342" y="180" width="${P}" height="${P}" fill="#3a3a40"/>
+  `;
+
+  // --- Campfire (period-specific) ---
+  let campfireHtml = '';
+  if (period === 'dawn') {
+    // Dim embers (pixel)
+    campfireHtml = `
+      ${stoneRing}
+      <rect x="328" y="180" width="${P}" height="${P}" fill="#8b2200" opacity="0.5"/>
+      <rect x="332" y="180" width="${P}" height="${P}" fill="#a03000" opacity="0.4"/>
+    `;
+  } else if (period === 'morning') {
+    // Smoke only (pixel)
+    campfireHtml = `
+      ${stoneRing}
+      <rect x="328" y="180" width="${P}" height="${P}" fill="#5a4a30"/>
+      <rect x="332" y="180" width="${P}" height="${P}" fill="#5a4a30"/>
+      <rect x="328" y="176" width="${P}" height="${P}" fill="#4a5170" opacity="0.2"/>
+      <rect x="332" y="172" width="${P}" height="${P}" fill="#4a5170" opacity="0.15"/>
+      <rect x="328" y="168" width="${P}" height="${P}" fill="#4a5170" opacity="0.1"/>
+    `;
+  } else if (period === 'day') {
+    // No fire, just logs (pixel)
+    campfireHtml = `
+      ${stoneRing}
+      <rect x="324" y="180" width="${P*3}" height="${P}" fill="#5a4a30"/>
+      <rect x="328" y="176" width="${P*2}" height="${P}" fill="#6b4a28"/>
+    `;
+  } else {
+    // Full fire with glow (all 4px pixel)
+    campfireHtml = `
+      ${stoneRing}
+      <!-- Glow (rect-based) -->
+      <rect x="316" y="168" width="${P*7}" height="${P*4}" fill="#ff8c32" opacity="0.04"/>
+      <rect x="320" y="172" width="${P*5}" height="${P*3}" fill="#ff6600" opacity="0.06"/>
+      <!-- Logs -->
+      <rect x="324" y="180" width="${P*3}" height="${P}" fill="#5a3a20"/>
+      <rect x="326" y="180" width="${P*3}" height="${P}" fill="#6b4a28"/>
+      <!-- Flames (pixel, animated with steps) -->
+      <rect x="328" y="176" width="${P}" height="${P}" fill="#ff6600">
+        <animate attributeName="opacity" values="1;0.6;1" dur="0.4s" steps="2" repeatCount="indefinite"/>
+      </rect>
+      <rect x="332" y="172" width="${P}" height="${P}" fill="#ffcc00">
+        <animate attributeName="opacity" values="0.8;1;0.6" dur="0.5s" steps="2" repeatCount="indefinite"/>
+      </rect>
+      <rect x="332" y="176" width="${P}" height="${P}" fill="#ff8800"/>
+      <rect x="328" y="172" width="${P}" height="${P}" fill="#ff9900" opacity="0.7">
+        <animate attributeName="opacity" values="0.7;0.3;0.7" dur="0.35s" steps="2" repeatCount="indefinite"/>
+      </rect>
+      <rect x="336" y="176" width="${P}" height="${P}" fill="#ff6600" opacity="0.6"/>
+      <rect x="330" y="168" width="${P}" height="${P}" fill="#ff6600" opacity="0.4">
+        <animate attributeName="opacity" values="0.4;0.1;0.4" dur="0.6s" steps="2" repeatCount="indefinite"/>
+      </rect>
+      <!-- Smoke (pixel) -->
+      <rect x="332" y="164" width="${P}" height="${P}" fill="#4a5170" opacity="0.15">
+        <animate attributeName="opacity" values="0.15;0.05;0.15" dur="2s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="328" y="160" width="${P}" height="${P}" fill="#4a5170" opacity="0.08"/>
+    `;
+  }
+
+  // --- Sherpa (period-specific) ---
+  let sherpaHtml = '';
+  if (period === 'dawn') {
+    // Sleeping horizontally
+    sherpaHtml = `
+      <g transform="translate(345, 178)">
+        <!-- Body lying flat -->
+        <rect x="0" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="8" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="12" y="0" width="4" height="4" fill="#2c3e50"/>
+        <rect x="16" y="0" width="4" height="4" fill="#2c3e50"/>
+        <!-- Head -->
+        <rect x="-4" y="-1" width="4" height="4" fill="#f5c6a0"/>
+        <!-- Hat flat -->
+        <rect x="-8" y="-2" width="4" height="4" fill="#e74c3c"/>
+        <!-- Zzz (pixel) -->
+        <rect x="8" y="-8" width="${P}" height="${P}" fill="#8888aa" opacity="0.5"/>
+        <rect x="12" y="-12" width="${P}" height="${P}" fill="#8888aa" opacity="0.4"/>
+        <rect x="14" y="-16" width="${P}" height="${P}" fill="#8888aa" opacity="0.3"/>
+        <rect x="16" y="-20" width="${P}" height="${P}" fill="#8888aa" opacity="0.2"/>
+      </g>
+    `;
+  } else if (period === 'morning') {
+    // Stretching (arms raised)
+    sherpaHtml = `
+      <g transform="translate(345, 170)">
+        <!-- Hat -->
+        <rect x="0" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="-4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <!-- Face -->
+        <rect x="-4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="0" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <!-- Body -->
+        <rect x="-4" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="0" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="0" width="4" height="4" fill="#3498db"/>
+        <!-- Arms raised -->
+        <rect x="-8" y="-8" width="4" height="4" fill="#3498db"/>
+        <rect x="8" y="-4" width="4" height="4" fill="#3498db"/>
+        <!-- Lower body -->
+        <rect x="-4" y="4" width="4" height="4" fill="#3498db"/>
+        <rect x="0" y="4" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="4" width="4" height="4" fill="#3498db"/>
+        <!-- Legs -->
+        <rect x="-4" y="8" width="4" height="4" fill="#2c3e50"/>
+        <rect x="4" y="8" width="4" height="4" fill="#2c3e50"/>
+      </g>
+    `;
+  } else if (period === 'day') {
+    // Walking pose with backpack
+    sherpaHtml = `
+      <g transform="translate(355, 166)">
+        <!-- Hat -->
+        <rect x="0" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="-4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <!-- Face -->
+        <rect x="-4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="0" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <!-- Body -->
+        <rect x="-4" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="0" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="-4" y="4" width="4" height="4" fill="#3498db"/>
+        <rect x="0" y="4" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="4" width="4" height="4" fill="#3498db"/>
+        <!-- Backpack -->
+        <rect x="8" y="0" width="4" height="4" fill="#8b6914"/>
+        <rect x="8" y="4" width="4" height="4" fill="#8b6914"/>
+        <!-- Legs (walking) -->
+        <rect x="-4" y="8" width="4" height="4" fill="#2c3e50"/>
+        <rect x="0" y="8" width="4" height="4" fill="#2c3e50"/>
+        <rect x="4" y="12" width="4" height="4" fill="#2c3e50"/>
+        <rect x="-4" y="12" width="4" height="4" fill="#2c3e50"/>
+      </g>
+    `;
+  } else {
+    // Sitting with mug
+    sherpaHtml = `
+      <g transform="translate(345, 170)">
+        <!-- Hat -->
+        <rect x="0" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="-4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <rect x="4" y="-8" width="4" height="4" fill="#e74c3c"/>
+        <!-- Face -->
+        <rect x="-4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="0" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <rect x="4" y="-4" width="4" height="4" fill="#f5c6a0"/>
+        <!-- Body -->
+        <rect x="-4" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="0" y="0" width="4" height="4" fill="#3498db"/>
+        <rect x="4" y="0" width="4" height="4" fill="#3498db"/>
+        <!-- Backpack -->
+        <rect x="8" y="0" width="4" height="4" fill="#8b6914"/>
+        <!-- Sitting legs -->
+        <rect x="-4" y="4" width="4" height="4" fill="#2c3e50"/>
+        <rect x="0" y="4" width="4" height="4" fill="#2c3e50"/>
+        <!-- Mug (pixel) -->
+        <rect x="-8" y="0" width="${P}" height="${P}" fill="#ddd"/>
+        <rect x="-12" y="0" width="${P}" height="${P}" fill="#ddd" opacity="0.5"/>
+        <!-- Steam (pixel) -->
+        <rect x="-8" y="-4" width="${P}" height="${P}" fill="#4a5170" opacity="0.2">
+          <animate attributeName="opacity" values="0.2;0.05;0.2" dur="2s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+    `;
+  }
+
+  // --- Distant climber (day and evening only) ---
+  let distantClimber = '';
+  if (period === 'day' || period === 'evening') {
+    const climbOpacity = period === 'day' ? 0.6 : 0.5;
+    distantClimber = `
+      <g transform="translate(612, 148)" opacity="${climbOpacity}">
+        <rect x="0" y="0" width="${P}" height="${P}" fill="#f5c6a0"/>
+        <rect x="0" y="4" width="${P}" height="${P}" fill="#c84040"/>
+        <rect x="0" y="8" width="${P}" height="${P}" fill="#2c3e50"/>
+        <rect x="4" y="0" width="${P}" height="${P}" fill="#8090b0" opacity="0.5"/>
+        <rect x="4" y="4" width="${P}" height="${P}" fill="#8090b0" opacity="0.4"/>
+      </g>
+    `;
+  }
+
+  // --- Tent glow (dawn only) ---
+  let tentGlow = '';
+  if (period === 'dawn') {
+    tentGlow = `<rect x="88" y="180" width="4" height="4" fill="#ffcc44" opacity="0.3"/>`;
+  }
+
+  // --- Sunrise glow (morning only) ---
+  let sunriseGlow = '';
+  if (period === 'morning') {
+    sunriseGlow = `<rect x="360" y="140" width="280" height="60" fill="#e8834a" opacity="0.06"/>
+      <rect x="400" y="160" width="200" height="40" fill="#f5a060" opacity="0.05"/>`;
+  }
+
+  // --- Assemble SVG ---
+  const svgString = `
+    <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style="image-rendering:pixelated">
+      <defs>
+        <linearGradient id="bc-sky" x1="0" y1="0" x2="0" y2="1">
+          ${stops}
+        </linearGradient>
+      </defs>
+
+      <!-- Sky -->
+      <rect width="680" height="220" fill="url(#bc-sky)"/>
+
+      ${sunriseGlow}
+
+      <!-- Stars / clouds -->
+      ${starsHtml}
+
+      <!-- Far range mountains -->
+      <polygon points="${farRangePoly}" fill="${theme.farRange}"/>
+
+      <!-- Snow caps -->
+      ${snowCaps}
+
+      <!-- Mid range mountains -->
+      <polygon points="${midRangePoly}" fill="${theme.midRange}"/>
+
+      <!-- Ground -->
+      ${groundHtml}
+
+      <!-- Tent glow -->
+      ${tentGlow}
+
+      <!-- Tents -->
+      ${tents}
+
+      <!-- Prayer flags -->
+      ${prayerFlags1}
+      ${prayerFlags2}
+
+      <!-- Supplies & gear -->
+      ${supplies}
+
+      <!-- Campfire -->
+      ${campfireHtml}
+
+      <!-- Sherpa -->
+      ${sherpaHtml}
+
+      <!-- Distant climber -->
+      ${distantClimber}
+    </svg>
+  `;
+
+  container.innerHTML = svgString;
+}
 
 function startSherpaQuotes() {
   const el = document.getElementById('sherpa-quote');
   if (!el) return;
 
-  // Shuffle array (Fisher-Yates)
-  let quotes = [...SHERPA_QUOTES];
-  for (let i = quotes.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [quotes[i], quotes[j]] = [quotes[j], quotes[i]];
+  const isFirstVisit = !localStorage.getItem(ONBOARDING_KEY);
+
+  if (isFirstVisit) {
+    // First visit: start with tap prompt, then guide on click
+    sherpaMode = 'intro';
+    el.textContent = '나를 눌러보세유~';
+  } else {
+    setSherpaMode('grumpy');
   }
 
-  let idx = 0;
-  // Set initial random quote
-  el.textContent = quotes[idx];
-
-  setInterval(() => {
-    el.style.opacity = '0';
-    setTimeout(() => {
-      idx++;
-      if (idx >= quotes.length) {
-        // Reshuffle
-        for (let i = quotes.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [quotes[i], quotes[j]] = [quotes[j], quotes[i]];
-        }
-        idx = 0;
-      }
-      el.textContent = quotes[idx];
-      el.style.opacity = '1';
-    }, 500);
+  // Start rotation timer
+  if (sherpaInterval) clearInterval(sherpaInterval);
+  sherpaInterval = setInterval(() => {
+    if (sherpaMode === 'intro') return; // Don't rotate during intro
+    advanceSherpa();
   }, 8000);
 }
+
+window.toggleSherpaMode = function() {
+  const speech = document.getElementById('sherpa-speech');
+  const el = document.getElementById('sherpa-quote');
+  if (!el || !speech) return;
+
+  if (sherpaMode === 'intro') {
+    // First click ever: enter guide mode
+    setSherpaMode('guide');
+    return;
+  }
+
+  // Toggle between guide and grumpy
+  const newMode = sherpaMode === 'guide' ? 'grumpy' : 'guide';
+
+  // Brief mode-switch message
+  el.style.opacity = '0';
+  setTimeout(() => {
+    if (newMode === 'guide') {
+      el.textContent = '가이드 모드여유~ 사용법 알려줄겨 📋';
+    } else {
+      el.textContent = '다시 푸념 모드여유... 😮‍💨';
+    }
+    el.style.opacity = '1';
+
+    setTimeout(() => {
+      setSherpaMode(newMode);
+    }, 2000);
+  }, 300);
+};
 
 // ---------------------------------------------------------------------------
 // Activity Trail
@@ -2137,12 +2643,11 @@ async function init() {
   }
   renderAll();
   loadPortal();
+  renderBasecampScene();
   startSherpaQuotes();
   loadActivityTrail();
   connectWs();
 
-  // Show onboarding for first-time users
-  setTimeout(showOnboarding, 500);
 }
 
 document.addEventListener('DOMContentLoaded', init);

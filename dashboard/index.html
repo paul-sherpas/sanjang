@@ -19,38 +19,14 @@
   <div id="portal">
     <!-- 베이스캠프 씬 -->
     <div class="portal-section" id="basecamp-scene">
-      <div class="bc-scene">
-        <!-- Stars -->
-        <div class="bc-star twinkle" style="top:8%;left:12%"></div>
-        <div class="bc-star twinkle-slow" style="top:15%;left:30%"></div>
-        <div class="bc-star twinkle" style="top:5%;left:48%"></div>
-        <div class="bc-star twinkle-slow" style="top:20%;left:65%"></div>
-        <div class="bc-star twinkle" style="top:10%;left:80%"></div>
-        <div class="bc-star twinkle-slow" style="top:25%;left:92%"></div>
-        <div class="bc-star twinkle" style="top:18%;left:5%"></div>
-        <div class="bc-star twinkle-slow" style="top:6%;left:72%"></div>
-        <div class="bc-star twinkle" style="top:22%;left:42%"></div>
-        <div class="bc-star twinkle-slow" style="top:12%;left:55%"></div>
-
-        <!-- Mountains -->
-        <div class="bc-mountain bc-mountain-back"></div>
-        <div class="bc-mountain bc-mountain-front"></div>
-
-        <!-- Snow caps -->
-        <div class="bc-snow" style="bottom:64px;left:48%;width:12px"></div>
-        <div class="bc-snow" style="bottom:60px;left:50%;width:8px"></div>
-        <div class="bc-snow" style="bottom:56px;left:46%;width:4px"></div>
-
-        <!-- Campfire glow + campfire -->
-        <div class="bc-glow"></div>
-        <div class="bc-campfire"></div>
-
-        <!-- Sherpa -->
-        <div class="bc-sherpa"></div>
-
-        <!-- Speech bubble -->
+      <div class="bc-scene" id="bc-scene-container">
+        <!-- JS renders time-based SVG scene here -->
+      </div>
+      <!-- Speech bubble stays outside SVG for text rendering -->
+      <div class="bc-speech-wrap">
+        <div class="bc-sherpa-hitbox" onclick="toggleSherpaMode()" title="클릭해서 모드 변경"></div>
         <div class="bc-speech fade-in" id="sherpa-speech">
-          <span id="sherpa-quote">요구사항 또 바뀌었댜... 뭐 그러려니 하쥬</span>
+          <span id="sherpa-quote"></span>
         </div>
       </div>
     </div>
