@@ -305,6 +305,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // REST API
   // -------------------------------------------------------------------------
 
+  // Project info — used by dashboard header
+  const projectName = projectRoot.split("/").pop() ?? "project";
+  app.get("/api/project", (_req: Request, res: Response) => res.json({ name: projectName }));
+
   app.get("/api/ports", (_req: Request, res: Response) => res.json(scanPorts()));
 
   app.get("/api/branches", async (_req: Request, res: Response) => {

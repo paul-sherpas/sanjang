@@ -1362,6 +1362,11 @@ window.wsOpenTerminal = async function() {
   }
 };
 
+window.wsDelete = function() {
+  if (!currentWorkspace) return;
+  deletePg(currentWorkspace).then(() => exitWorkspace());
+};
+
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------

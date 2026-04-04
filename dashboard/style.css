@@ -162,6 +162,16 @@ header h1::before {
   background: #dc2626;
 }
 
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid transparent;
+}
+.btn-danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--red);
+}
+
 .btn-ghost {
   background: var(--btn-ghost);
   color: var(--text-secondary);

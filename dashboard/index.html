@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>산장</title>
+  <script>fetch('/api/project').then(r=>r.json()).then(d=>{document.getElementById('project-name').textContent='— '+d.name;document.title='산장 — '+d.name})</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- Header -->
   <header>
-    <h1>산장</h1>
+    <h1>⛰ 산장 <span id="project-name" style="font-weight:400;color:var(--text-muted);font-size:0.6em"></span></h1>
     <button class="btn btn-primary" onclick="openNewModal()">+ 새 캠프</button>
   </header>
 
@@ -88,6 +89,7 @@
         <button class="btn btn-sub" onclick="wsSync()">⬇️ 최신</button>
         <button class="btn btn-sub" onclick="wsReset()">🔄 처음부터</button>
         <button class="btn btn-sub" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널 열기</button>
+        <button class="btn btn-danger-ghost" onclick="wsDelete()">삭제</button>
       </div>
     </div>
   </div>
