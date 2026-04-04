@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { copyFileSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server, request as httpRequest, type IncomingMessage } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -326,7 +326,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Express app
   const app = express();
   app.use(express.json());
-  app.use(express.static(join(__dirname, "..", "dashboard")));
+
+  // Dashboard path: works from both source (lib/) and dist (dist/lib/)
+  const dashboardDir = existsSync(join(__dirname, "..", "dashboard"))
+    ? join(__dirname, "..", "dashboard")
+    : join(__dirname, "..", "..", "dashboard");
+  app.use(express.static(dashboardDir));
 
   const server = createServer(app);
   const wss = new WebSocketServer({ server });
@@ -1519,7 +1524,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
   // SPA fallback
   app.get("*", (_req: Request, res: Response) => {
-    res.sendFile(join(__dirname, "..", "dashboard", "index.html"));
+    res.sendFile(join(dashboardDir, "index.html"));
   });
 
   return { app, server, port, runningTasks, warpStatus, watchers };

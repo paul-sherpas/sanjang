@@ -1,13 +1,15 @@
 {
   "name": "sanjang",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local dev environment manager for vibe coders",
   "type": "module",
   "bin": {
-    "sanjang": "./bin/sanjang.js"
+    "sanjang": "./dist/bin/sanjang.js"
   },
   "scripts": {
     "start": "node bin/sanjang.js",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build && echo '#!/usr/bin/env node' | cat - dist/bin/sanjang.js > dist/bin/_tmp && mv dist/bin/_tmp dist/bin/sanjang.js",
     "test": "node --experimental-transform-types --test test/**/*.test.ts bin/__tests__/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "npx @biomejs/biome check lib/ test/ bin/"
@@ -32,8 +34,7 @@
     "local-dev"
   ],
   "files": [
-    "bin/",
-    "lib/",
+    "dist/",
     "dashboard/",
     "templates/"
   ],
