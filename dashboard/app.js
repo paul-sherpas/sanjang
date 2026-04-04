@@ -388,7 +388,10 @@ function renderCard(pg) {
   </div>` : ''}
 
   ${status === 'error' ? `
-  <div class="card-error-hint">걱정 마세요! 아래 안내를 따라하면 됩니다.</div>` : ''}
+  <div class="card-error-hint">
+    <button class="btn btn-primary btn-sm" onclick="autoFix('${n}')">자동으로 고치기</button>
+    <span style="margin-left:8px;font-size:12px;color:var(--text-muted)">문제를 분석하고 자동으로 수정합니다</span>
+  </div>` : ''}
 
   <div class="card-changes" id="changes-${n}"></div>
 
@@ -993,6 +996,13 @@ window.openShipModal = async function openShipModal(name) {
   document.getElementById('ship-message').value = '';
   document.getElementById('ship-message').focus();
 
+  // Auto-generate description
+  api('POST', `/api/playgrounds/${name}/smart-pr`).then(data => {
+    if (data.description) {
+      document.getElementById('ship-message').value = data.description;
+    }
+  }).catch(() => {}); // silent fail
+
   // Show changed file count
   try {
     const data = await api('GET', `/api/playgrounds/${name}/changes`);
@@ -1340,6 +1350,38 @@ window.wsOpenTerminal = async function() {
 // Portal
 // ---------------------------------------------------------------------------
 
+
+async function loadSuggestions() {
+  const section = document.getElementById('portal-suggestions-section');
+  const list = document.getElementById('portal-suggestions');
+  if (!section || !list) return;
+
+  try {
+    const suggestions = await api('GET', '/api/suggestions');
+    if (!suggestions || suggestions.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const iconMap = { issue: '🔵', pr: '🟡', recent: '⚪' };
+    list.innerHTML = suggestions.map(item => {
+      const icon = iconMap[item.type] || '⚪';
+      return `
+      <div class="portal-work-item" onclick="${item.action || ''}">
+        <div class="portal-work-left">
+          <span class="portal-work-icon">${icon}</span>
+          <div>
+            <div class="portal-work-title">${escHtml(item.title)}</div>
+            <div class="portal-work-meta">${escHtml(item.description || '')}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    section.style.display = '';
+  } catch {
+    section.style.display = 'none';
+  }
+}
 async function loadPortal() {
   const workList = document.getElementById('portal-work');
   if (!workList) return;
@@ -1422,6 +1464,21 @@ window.quickStart = async function quickStart() {
   }
 };
 
+
+window.autoFix = async function autoFix(name) {
+  toast('문제를 분석하고 있습니다...', 'info');
+  try {
+    const result = await api('POST', `/api/playgrounds/${name}/auto-fix`);
+    if (result.fixed) {
+      toast(`자동 수정 완료: ${result.description}`, 'success');
+    } else {
+      toast(result.description, 'error');
+    }
+  } catch (err) {
+    toast(`자동 수정 실패: ${err.message}`, 'error');
+  }
+};
+
 async function init() {
   try {
     const pgs = await api('GET', '/api/playgrounds');
@@ -1433,6 +1490,7 @@ async function init() {
   }
   renderAll();
   loadPortal();
+  loadSuggestions();
   connectWs();
 }
 
