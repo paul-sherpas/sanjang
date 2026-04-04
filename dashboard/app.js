@@ -1261,6 +1261,11 @@ function renderWorkspace(data) {
   // Log — show existing logs
   updateWorkspaceLog(camp.name);
 
+  // Quest progress bar
+  const hasChanges = changes.count > 0;
+  const hasSaves = (data.commits || []).length > 0;
+  updateQuestProgress(hasChanges, hasSaves);
+
   // Start polling changes
   startWorkspacePolling(camp.name);
 }
@@ -1343,6 +1348,31 @@ function playSaveEffect() {
     }
     btn.appendChild(sparkles);
     setTimeout(() => sparkles.remove(), 600);
+  }
+}
+
+function updateQuestProgress(hasChanges, hasSaves) {
+  const stepWork = document.getElementById('ws-step-work');
+  const stepSave = document.getElementById('ws-step-save');
+  const stepShip = document.getElementById('ws-step-ship');
+  if (!stepWork) return;
+
+  [stepWork, stepSave, stepShip].forEach(s => {
+    s.classList.remove('ws-quest-active', 'ws-quest-done');
+  });
+
+  if (!hasChanges && !hasSaves) {
+    stepWork.classList.add('ws-quest-active');
+  } else if (hasChanges && !hasSaves) {
+    stepWork.classList.add('ws-quest-done');
+    stepSave.classList.add('ws-quest-active');
+  } else if (!hasChanges && hasSaves) {
+    stepWork.classList.add('ws-quest-done');
+    stepSave.classList.add('ws-quest-done');
+    stepShip.classList.add('ws-quest-active');
+  } else {
+    stepWork.classList.add('ws-quest-done');
+    stepSave.classList.add('ws-quest-active');
   }
 }
 

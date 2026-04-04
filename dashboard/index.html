@@ -55,6 +55,13 @@
       <span class="workspace-title" id="ws-title"></span>
       <span class="workspace-status" id="ws-status"></span>
       <div class="ws-mini-char" id="ws-mini-char"></div>
+      <div class="ws-quest" id="ws-quest">
+        <div class="ws-quest-step ws-quest-active" id="ws-step-work"><div class="ws-quest-dot"></div><span>작업</span></div>
+        <div class="ws-quest-line"></div>
+        <div class="ws-quest-step" id="ws-step-save"><div class="ws-quest-dot"></div><span>세이브</span></div>
+        <div class="ws-quest-line"></div>
+        <div class="ws-quest-step" id="ws-step-ship"><div class="ws-quest-dot"></div><span>보내기</span></div>
+      </div>
       <div style="flex:1"></div>
       <button class="btn btn-sub btn-sm" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널</button>
       <button class="btn btn-sub btn-sm" onclick="togglePanel()">⛰ 패널</button>

@@ -1887,3 +1887,57 @@ header.hidden {
   0%, 100% { transform: rotate(90deg) translateX(0); }
   50% { transform: rotate(90deg) translateX(2px); }
 }
+
+/* === Gamification: Quest progress (NES style) === */
+.ws-quest {
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+}
+.ws-quest-step {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.25;
+  transition: opacity 0.3s steps(3);
+}
+.ws-quest-step span {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+}
+.ws-quest-step.ws-quest-active,
+.ws-quest-step.ws-quest-done {
+  opacity: 1;
+}
+.ws-quest-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+  background: var(--border);
+  border: 2px solid rgba(0,0,0,0.3);
+  transition: background 0.2s steps(2);
+}
+.ws-quest-active .ws-quest-dot {
+  background: #fbbf24;
+  border-color: #b45309;
+  animation: quest-pulse 1.5s steps(2) infinite;
+}
+.ws-quest-done .ws-quest-dot {
+  background: #22c55e;
+  border-color: #15803d;
+}
+@keyframes quest-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4); }
+  50% { box-shadow: 0 0 0 3px rgba(251, 191, 36, 0); }
+}
+.ws-quest-line {
+  width: 12px;
+  height: 2px;
+  background: var(--border);
+  margin: 0 2px;
+}
+.ws-quest-done + .ws-quest-line {
+  background: #22c55e;
+}
