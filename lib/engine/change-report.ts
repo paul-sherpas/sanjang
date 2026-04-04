@@ -138,6 +138,15 @@ export function buildChangeReport(rawFiles: { path: string; status: ChangeReport
 
   const warnings = detectWarnings(files);
 
+  // 기본 카테고리 설명 — AI 없이도 즉시 표시
+  const categoryDetails: Record<string, string[]> = {};
+  for (const [cat, catFiles] of Object.entries(byCategory)) {
+    categoryDetails[cat] = catFiles.map((f) => {
+      const name = f.path.split("/").pop() || f.path;
+      return f.status === "새 파일" ? `${name} 추가됨` : `${name} 수정됨`;
+    });
+  }
+
   return {
     files,
     totalCount: files.length,
@@ -145,7 +154,7 @@ export function buildChangeReport(rawFiles: { path: string; status: ChangeReport
     warnings,
     summary: null,
     humanDescription: null,
-    categoryDetails: null,
+    categoryDetails,
   };
 }
 
