@@ -1707,11 +1707,8 @@ header.hidden {
   margin-top: 8px;
 }
 .ws-commit-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 0;
+  display: block;
+  padding: 0;
   font-size: 13px;
   border-bottom: 1px solid var(--border);
 }
@@ -1720,6 +1717,10 @@ header.hidden {
 }
 .ws-commit-msg {
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .ws-commit-date {
   color: var(--text-muted);
@@ -2191,12 +2192,12 @@ header.hidden {
 
 /* Commit report (details/summary dropdown) */
 details.ws-commit-item { border-radius: 6px; margin-bottom: 4px; }
-details.ws-commit-item > summary.ws-commit-summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 6px 8px; border-radius: 6px; }
+details.ws-commit-item > summary.ws-commit-summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 6px 8px; border-radius: 6px; flex-wrap: nowrap; }
 details.ws-commit-item > summary.ws-commit-summary::-webkit-details-marker { display: none; }
 details.ws-commit-item > summary.ws-commit-summary:hover { background: var(--surface); }
 .ws-commit-arrow { font-size: 10px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s; display: inline-block; }
 details.ws-commit-item[open] .ws-commit-arrow { transform: rotate(90deg); }
-.ws-commit-report { margin: 0 8px 8px 8px; padding: 10px 12px; background: var(--surface); border-radius: 6px; font-size: 12px; }
+.ws-commit-report { margin: 4px 8px 8px 8px; padding: 10px 12px; background: var(--surface); border-radius: 6px; font-size: 12px; width: auto; }
 .ws-commit-report-loading, .ws-commit-report-empty { color: var(--text-muted); }
 .ws-commit-cat { margin-bottom: 6px; }
 .ws-commit-cat:last-child { margin-bottom: 0; }
