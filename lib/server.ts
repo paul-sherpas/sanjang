@@ -352,7 +352,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         broadcast({ type: "log", name, source: "sanjang", data: msg });
       });
 
-      const record: Camp = { name, branch, slot, fePort: actualFePort, bePort, status: "setting-up" };
+      const baseCommit = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || undefined;
+      const record: Camp = { name, branch, slot, fePort: actualFePort, bePort, status: "setting-up", baseCommit, parentBranch: branch };
       upsert(record);
       broadcast({ type: "playground-created", name, data: record });
       res.status(201).json(record);
@@ -515,6 +516,46 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
+  // POST /api/playgrounds/:name/save — 💾 세이브 (auto git add + AI commit message + commit)
+  app.post("/api/playgrounds/:name/save", async (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+    const wtPath = campPath(name);
+
+    const files = getChangedFiles(wtPath);
+    if (files.length === 0) return res.json({ saved: false, reason: "변경사항이 없습니다." });
+
+    try {
+      // Stage all changes
+      runGit(["-C", wtPath, "add", "-A"], wtPath);
+
+      // Generate commit message with AI
+      const diff = spawnSync("git", ["-C", wtPath, "diff", "--cached", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
+      let message = `${files.length}개 파일 변경`;
+      try {
+        const aiResult = spawnSync(
+          "claude",
+          ["-p", "--model", "haiku", `이 git diff를 한국어 커밋 메시지로 작성해. 한 줄, 50자 이내, 설명 없이 메시지만:\n\n${diff.slice(0, 2000)}`],
+          { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
+        );
+        if (aiResult.status === 0 && aiResult.stdout?.trim()) {
+          message = aiResult.stdout.trim();
+        }
+      } catch {
+        /* fallback to default message */
+      }
+
+      // Commit
+      runGit(["-C", wtPath, "commit", "-m", message], wtPath);
+
+      broadcast({ type: "playground-saved", name, data: { message } });
+      res.json({ saved: true, message });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   app.post("/api/playgrounds/:name/reset", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
@@ -647,6 +688,27 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       res.json({ count: files.length, files, actions: readActions(name) });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // GET /api/playgrounds/:name/changes-summary — AI 한 줄 변경 요약
+  app.get("/api/playgrounds/:name/changes-summary", async (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    if (!getOne(name)) return res.status(404).json({ error: "not found" });
+    try {
+      const wtPath = campPath(name);
+      const diff = spawnSync("git", ["-C", wtPath, "diff", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
+      if (!diff.trim()) return res.json({ summary: null });
+
+      const result = spawnSync(
+        "claude",
+        ["-p", "--model", "haiku", `이 git diff를 한국어 한 줄(20자 이내)로 요약해. 설명 없이 요약만:\n\n${diff.slice(0, 2000)}`],
+        { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
+      );
+      const summary = result.status === 0 ? (result.stdout ?? "").trim() : null;
+      res.json({ summary });
+    } catch {
+      res.json({ summary: null });
     }
   });
 
@@ -980,9 +1042,28 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       /* ignore */
     }
 
+    // 커밋 기록 — baseCommit(캠프 생성 시점) 이후만 표시
+    let commits: { hash: string; message: string; date: string }[] = [];
+    try {
+      const base = pg.baseCommit;
+      const logArgs = base
+        ? ["-C", wtPath, "log", "--oneline", "--format=%h\t%s\t%cr", "--max-count=20", `${base}..HEAD`]
+        : ["-C", wtPath, "log", "--oneline", "--format=%h\t%s\t%cr", "--max-count=5", "HEAD"];
+      const log = spawnSync("git", logArgs, { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || "";
+      if (log) {
+        commits = log.split("\n").map(line => {
+          const [hash = "", message = "", date = ""] = line.split("\t");
+          return { hash, message, date };
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+
     res.json({
       camp: pg,
       changes,
+      commits,
       warpInstalled: warpStatus.installed,
       previewUrl: pg.status === "running" ? `http://localhost:${pg.fePort}` : null,
     });
@@ -1133,6 +1214,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         broadcast({ type: "log", name, source: "sanjang", data: msg });
       });
 
+      const baseCommit2 = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim() || undefined;
       const record: Camp = {
         name,
         branch,
@@ -1141,6 +1223,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         bePort,
         status: "setting-up",
         description: description.trim(),
+        baseCommit: baseCommit2,
+        parentBranch: defaultBranch,
       };
       upsert(record);
       broadcast({ type: "playground-created", name, data: record });

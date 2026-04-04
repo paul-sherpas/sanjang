@@ -11,7 +11,7 @@
 
   <!-- Header -->
   <header>
-    <h1>⛰ 산장 <span id="project-name" style="font-weight:400;color:var(--text-muted);font-size:0.6em"></span></h1>
+    <h1>산장 <span id="project-name" style="font-weight:400;color:var(--text-muted);font-size:0.6em"></span></h1>
     <button class="btn btn-primary" onclick="openNewModal()">+ 새 캠프</button>
   </header>
 
@@ -47,49 +47,55 @@
     </div>
   </div>
 
-  <!-- Workspace View (full-screen camp) -->
+  <!-- Workspace View (full-screen preview + slide panel) -->
   <div id="workspace" class="workspace hidden">
-    <div class="workspace-header">
-      <button class="btn btn-ghost btn-sm" onclick="exitWorkspace()">← 캠프 목록</button>
+    <!-- Top bar — minimal, over the preview -->
+    <div class="ws-topbar">
+      <button class="btn btn-ghost btn-sm" onclick="exitWorkspace()">← 목록</button>
       <span class="workspace-title" id="ws-title"></span>
       <span class="workspace-status" id="ws-status"></span>
+      <div style="flex:1"></div>
+      <button class="btn btn-sub btn-sm" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널</button>
+      <button class="btn btn-sub btn-sm" onclick="togglePanel()">⛰ 패널</button>
     </div>
-    <div class="workspace-body">
-      <div class="workspace-left">
-        <div class="workspace-section">
-          <h3>📁 변경사항</h3>
-          <div id="ws-changes"></div>
+
+    <!-- Preview — full screen -->
+    <div class="ws-preview-full" id="ws-preview"></div>
+
+    <!-- Slide panel — right side -->
+    <div class="ws-panel" id="ws-panel">
+      <div class="ws-panel-content">
+        <div class="workspace-section ws-unsaved-section" id="ws-unsaved-section">
+          <div id="ws-changes-summary-text" class="ws-summary-text"></div>
+          <button class="btn btn-save" id="ws-save-btn" onclick="wsSave()">💾 세이브하기</button>
+          <details class="ws-file-details">
+            <summary>파일 보기</summary>
+            <div id="ws-changes"></div>
+          </details>
         </div>
         <div class="workspace-section">
-          <h3>📋 작업 기록</h3>
+          <h3>📜 세이브 기록</h3>
           <div id="ws-actions"></div>
         </div>
-        <div class="workspace-section">
-          <h3>📜 로그</h3>
+        <details class="workspace-section ws-log-details">
+          <summary>📜 로그</summary>
           <div class="ws-log-panel" id="ws-log"><pre></pre></div>
+        </details>
+      </div>
+      <div class="ws-panel-actions">
+        <div class="workspace-task-row">
+          <input class="form-input" id="ws-task-input" type="text"
+            placeholder="뭐 해줄까?" autocomplete="off" spellcheck="false"
+            onkeydown="if(event.key==='Enter')wsSubmitTask()">
+          <button class="btn btn-primary btn-sm" onclick="wsSubmitTask()">시키기</button>
         </div>
-      </div>
-      <div class="workspace-right">
-        <div class="workspace-section workspace-preview-section">
-          <h3>🌐 프리뷰</h3>
-          <div id="ws-preview"></div>
+        <div class="workspace-btn-row">
+          <button class="btn btn-accent btn-sm" id="ws-ship-btn" onclick="wsShip()">팀에 보내기</button>
+          <button class="btn btn-sub btn-sm" onclick="wsSnap()">📸</button>
+          <button class="btn btn-sub btn-sm" onclick="wsSync()">⬇️</button>
+          <button class="btn btn-sub btn-sm" onclick="wsReset()">🔄</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="wsDelete()">삭제</button>
         </div>
-      </div>
-    </div>
-    <div class="workspace-actions">
-      <div class="workspace-task-row">
-        <input class="form-input" id="ws-task-input" type="text"
-          placeholder="뭐 해줄까?" autocomplete="off" spellcheck="false"
-          onkeydown="if(event.key==='Enter')wsSubmitTask()">
-        <button class="btn btn-primary btn-sm" onclick="wsSubmitTask()">시키기</button>
-      </div>
-      <div class="workspace-btn-row">
-        <button class="btn btn-accent" id="ws-ship-btn" onclick="wsShip()">팀에 보내기</button>
-        <button class="btn btn-sub" onclick="wsSnap()">📸 스냅샷</button>
-        <button class="btn btn-sub" onclick="wsSync()">⬇️ 최신</button>
-        <button class="btn btn-sub" onclick="wsReset()">🔄 처음부터</button>
-        <button class="btn btn-sub" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널 열기</button>
-        <button class="btn btn-danger-ghost" onclick="wsDelete()">삭제</button>
       </div>
     </div>
   </div>

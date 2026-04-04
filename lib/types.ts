@@ -9,6 +9,8 @@ export interface Camp {
   url?: string;
   status: "stopped" | "starting" | "starting-frontend" | "running" | "setting-up" | "error";
   description?: string;
+  baseCommit?: string;
+  parentBranch?: string;
 }
 
 export interface DevConfig {

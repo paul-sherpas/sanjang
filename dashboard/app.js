@@ -238,27 +238,39 @@ function handleWsMessage(msg) {
       toast(data?.message || '충돌 해결에 실패했습니다.', 'error');
       break;
     }
+
+    case 'playground-saved': {
+      if (!name) break;
+      toast(`💾 세이브됨: ${data?.message || ''}`, 'success');
+      break;
+    }
+
     case 'file-changes': {
       if (!name || !data) break;
       if (currentWorkspace !== name) break;
 
-      const changesEl = document.getElementById('ws-changes');
-      if (!changesEl) break;
+      const changesEl2 = document.getElementById('ws-changes');
+      const summaryText2 = document.getElementById('ws-changes-summary-text');
+      if (!changesEl2) break;
 
       const prevPaths = new Set(
-        [...changesEl.querySelectorAll('.ws-file-item span:last-child')].map(el => el.textContent)
+        [...changesEl2.querySelectorAll('.ws-file-item span:last-child')].map(el => el.textContent)
       );
 
       if (data.count === 0) {
-        changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
+        if (summaryText2) summaryText2.textContent = '변경 없음';
+        changesEl2.innerHTML = '';
       } else {
-        changesEl.innerHTML = data.files.map(f => {
+        if (summaryText2) summaryText2.textContent = `${data.count}개 파일 변경됨`;
+        changesEl2.innerHTML = data.files.map(f => {
           const isNew = !prevPaths.has(f.path);
           return `<div class="ws-file-item${isNew ? ' ws-file-new' : ''}">
             <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
             <span>${escHtml(f.path)}</span>
           </div>`;
         }).join('');
+        // Debounced AI summary fetch
+        debounceSummaryFetch(name);
       }
 
       updateChangeSummary(data.count, data.ts);
@@ -1159,25 +1171,46 @@ function renderWorkspace(data) {
   statusEl.textContent = camp.status;
   statusEl.className = `workspace-status badge badge-${camp.status}`;
 
-  // Changes
+  // Changes — unsaved indicator + save button
   const changesEl = document.getElementById('ws-changes');
+  const summaryTextEl = document.getElementById('ws-changes-summary-text');
+  const unsavedSection = document.getElementById('ws-unsaved-section');
+  const saveBtn = document.getElementById('ws-save-btn');
   if (changes.count === 0) {
-    changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
+    unsavedSection.classList.add('ws-no-changes');
+    summaryTextEl.textContent = '✅ 모든 변경이 세이브됨';
+    saveBtn.style.display = 'none';
+    changesEl.innerHTML = '';
   } else {
+    unsavedSection.classList.remove('ws-no-changes');
+    summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${changes.count}개 파일 수정 중`;
+    saveBtn.style.display = '';
+    saveBtn.textContent = '💾 세이브하기';
+    saveBtn.disabled = false;
     changesEl.innerHTML = changes.files.map(f =>
       `<div class="ws-file-item">
         <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
         <span>${escHtml(f.path)}</span>
       </div>`
     ).join('');
+    // Fetch AI summary
+    api('GET', `/api/playgrounds/${camp.name}/changes-summary`).then(data => {
+      if (data.summary) summaryTextEl.textContent = `⚠️ 저장 안 됨 — ${data.summary}`;
+    }).catch(() => {});
   }
 
-  // Actions
+  // Actions — show commits as work history
   const actionsEl = document.getElementById('ws-actions');
-  if (changes.actions?.length) {
-    actionsEl.innerHTML = changes.actions.map(a =>
-      `<div class="ws-action-item">• ${escHtml(a.description)}</div>`
+  const commitList = data.commits || [];
+  if (commitList.length > 0) {
+    actionsEl.innerHTML = commitList.map(c =>
+      `<div class="ws-commit-item">
+        <span class="ws-commit-msg">${escHtml(c.message)}</span>
+        <span class="ws-commit-date">${escHtml(c.date)}</span>
+      </div>`
     ).join('');
+  } else if (changes.count > 0) {
+    actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 커밋 없음 (작업 중)</span>';
   } else {
     actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 없음</span>';
   }
@@ -1206,9 +1239,9 @@ function renderWorkspace(data) {
     </span>`;
   }
 
-  // Terminal button label — Warp 설치 여부에 따라 표시
+  // Terminal button label
   const termBtn = document.getElementById('ws-terminal-btn');
-  termBtn.textContent = warpInstalled ? '💻 터미널 열기' : '💻 경로 복사';
+  termBtn.textContent = warpInstalled ? '💻 터미널' : '💻 경로 복사';
 
   // Log — show existing logs
   updateWorkspaceLog(camp.name);
@@ -1242,6 +1275,17 @@ function timeAgo(ts) {
   if (sec < 5) return '방금';
   if (sec < 60) return `${sec}초 전`;
   return `${Math.floor(sec / 60)}분 전`;
+}
+
+let summaryFetchTimer = null;
+function debounceSummaryFetch(campName) {
+  if (summaryFetchTimer) clearTimeout(summaryFetchTimer);
+  summaryFetchTimer = setTimeout(() => {
+    api('GET', `/api/playgrounds/${campName}/changes-summary`).then(data => {
+      const el = document.getElementById('ws-changes-summary-text');
+      if (data.summary && el) el.textContent = data.summary;
+    }).catch(() => {});
+  }, 3000);
 }
 
 let previewRefreshTimer = null;
@@ -1365,6 +1409,34 @@ window.wsOpenTerminal = async function() {
 window.wsDelete = function() {
   if (!currentWorkspace) return;
   deletePg(currentWorkspace).then(() => exitWorkspace());
+};
+
+window.wsSave = async function() {
+  if (!currentWorkspace) return;
+  const btn = document.getElementById('ws-save-btn');
+  btn.disabled = true;
+  btn.textContent = '💾 세이브 중...';
+  try {
+    const result = await api('POST', `/api/playgrounds/${currentWorkspace}/save`);
+    if (result.saved) {
+      btn.textContent = '✅ 세이브 완료!';
+      toast(`세이브됨: ${result.message}`, 'success');
+      // Refresh workspace data
+      const data = await api('POST', `/api/playgrounds/${currentWorkspace}/enter`);
+      renderWorkspace(data);
+    } else {
+      btn.textContent = '💾 세이브하기';
+      toast(result.reason || '변경사항이 없습니다.', 'info');
+    }
+  } catch (err) {
+    btn.textContent = '💾 세이브하기';
+    toast(`세이브 실패: ${err.message}`, 'error');
+  }
+  btn.disabled = false;
+};
+
+window.togglePanel = function() {
+  document.getElementById('ws-panel')?.classList.toggle('open');
 };
 
 // ---------------------------------------------------------------------------
