@@ -1777,3 +1777,51 @@ header.hidden {
   25% { transform: rotate(1deg); }
   75% { transform: rotate(-1deg); }
 }
+
+/* === Gamification: Save effects === */
+.ws-blocks.ws-blocks-flush .ws-block {
+  animation: block-flush 0.4s steps(6) forwards;
+}
+@keyframes block-flush {
+  0% { transform: translateY(0); opacity: 1; }
+  33% { transform: translateY(-8px); }
+  66% { transform: translateY(-20px) scale(0.5); opacity: 0.5; }
+  100% { transform: translateY(-30px) scale(0); opacity: 0; }
+}
+
+.ws-save-flash {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(251, 191, 36, 0.12);
+  pointer-events: none;
+  z-index: 9999;
+  animation: save-flash 0.4s steps(3) forwards;
+}
+@keyframes save-flash {
+  0% { opacity: 1; }
+  33% { opacity: 0.6; }
+  66% { opacity: 0.2; }
+  100% { opacity: 0; }
+}
+
+.ws-sparkles {
+  position: absolute;
+  inset: -24px;
+  pointer-events: none;
+  overflow: visible;
+}
+.ws-sparkle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 0;
+  background: #fbbf24;
+  animation: sparkle-fly 0.6s steps(6) forwards;
+}
+.ws-sparkle:nth-child(odd) { background: #f59e0b; }
+.ws-sparkle:nth-child(3n) { background: #fff; width: 2px; height: 2px; }
+@keyframes sparkle-fly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  50% { opacity: 1; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(0); opacity: 0; }
+}

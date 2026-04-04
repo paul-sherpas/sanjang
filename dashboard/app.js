@@ -1296,6 +1296,45 @@ function renderBlocks(files) {
   container.classList.toggle('ws-blocks-wobble', files.length >= 5);
 }
 
+function playSaveEffect() {
+  // 1. Flush blocks
+  const blocks = document.getElementById('ws-blocks');
+  if (blocks) {
+    blocks.classList.add('ws-blocks-flush');
+    setTimeout(() => {
+      blocks.innerHTML = '';
+      blocks.classList.remove('ws-blocks-flush', 'ws-blocks-wobble');
+    }, 400);
+  }
+
+  // 2. Screen flash (retro single-color)
+  const flash = document.createElement('div');
+  flash.className = 'ws-save-flash';
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 400);
+
+  // 3. Pixel sparkles around save button
+  const btn = document.getElementById('ws-save-btn');
+  if (btn) {
+    btn.style.position = 'relative';
+    const sparkles = document.createElement('div');
+    sparkles.className = 'ws-sparkles';
+    for (let i = 0; i < 10; i++) {
+      const s = document.createElement('div');
+      s.className = 'ws-sparkle';
+      const angle = (i / 10) * Math.PI * 2;
+      const dist = 24 + Math.random() * 16;
+      s.style.setProperty('--sx', `${Math.cos(angle) * dist}px`);
+      s.style.setProperty('--sy', `${Math.sin(angle) * dist}px`);
+      s.style.left = '50%';
+      s.style.top = '50%';
+      sparkles.appendChild(s);
+    }
+    btn.appendChild(sparkles);
+    setTimeout(() => sparkles.remove(), 600);
+  }
+}
+
 let summaryFetchTimer = null;
 function debounceSummaryFetch(campName) {
   if (summaryFetchTimer) clearTimeout(summaryFetchTimer);
@@ -1438,6 +1477,7 @@ window.wsSave = async function() {
   try {
     const result = await api('POST', `/api/playgrounds/${currentWorkspace}/save`);
     if (result.saved) {
+      playSaveEffect();
       btn.textContent = '✅ 세이브 완료!';
       toast(`세이브됨: ${result.message}`, 'success');
       // Refresh workspace data
