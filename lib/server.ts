@@ -8,6 +8,7 @@ import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
+import { buildChangeReport, generateReportSummary } from "./engine/change-report.ts";
 import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
 import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
@@ -938,29 +939,48 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
-  // GET /api/playgrounds/:name/changes-summary — AI 한 줄 변경 요약
-  app.get("/api/playgrounds/:name/changes-summary", async (req: NameReq, res: Response) => {
+  // GET /api/playgrounds/:name/change-report — 구조화된 변경 리포트 (changes-summary 대체)
+  app.get("/api/playgrounds/:name/change-report", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     if (!getOne(name)) return res.status(404).json({ error: "not found" });
     try {
       const wtPath = campPath(name);
-      const diff = spawnSync("git", ["-C", wtPath, "diff", "--stat"], { encoding: "utf8", stdio: "pipe" }).stdout || "";
-      if (!diff.trim()) return res.json({ summary: null });
+      const files = getChangedFiles(wtPath);
 
-      const result = spawnSync(
-        "claude",
-        [
-          "-p",
-          "--model",
-          "haiku",
-          `이 git diff를 한국어 한 줄(20자 이내)로 요약해. 설명 없이 요약만:\n\n${diff.slice(0, 2000)}`,
-        ],
-        { encoding: "utf8", stdio: "pipe", timeout: 10_000 },
-      );
-      const summary = result.status === 0 ? (result.stdout ?? "").trim() : null;
-      res.json({ summary });
-    } catch {
-      res.json({ summary: null });
+      if (files.length === 0) {
+        return res.json({
+          files: [],
+          totalCount: 0,
+          byCategory: {},
+          warnings: [],
+          summary: null,
+          humanDescription: null,
+        });
+      }
+
+      const validStatuses = new Set<string>(["수정", "추가", "삭제", "새 파일"]);
+      const reportFiles = files.map((f) => ({
+        path: f.path,
+        status: (validStatuses.has(f.status) ? f.status : "수정") as "수정" | "추가" | "삭제" | "새 파일",
+      }));
+      let report = buildChangeReport(reportFiles);
+
+      // AI 요약은 ?ai=true 일 때만 (비용 절약)
+      if (req.query.ai === "true") {
+        const diffStat = spawnSync("git", ["-C", wtPath, "diff", "--stat"], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }).stdout || "";
+        const diff = spawnSync("git", ["-C", wtPath, "diff"], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }).stdout || "";
+        report = generateReportSummary(diffStat, diff, report);
+      }
+
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 
