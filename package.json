@@ -1,7 +1,7 @@
 {
   "name": "sanjang",
   "version": "0.3.4",
-  "description": "Local dev environment manager for vibe coders",
+  "description": "AI dev environment for vibe coders — camp isolation, self-healing, smart PR",
   "type": "module",
   "bin": {
     "sanjang": "./dist/bin/sanjang.js"
