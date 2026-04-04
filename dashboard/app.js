@@ -1020,6 +1020,13 @@ window.closeShipResultModal = function() {
   document.getElementById('ship-result-modal').classList.remove('open');
 };
 
+function setShipStep(step, state) {
+  const el = document.getElementById(`ship-step-${step}`);
+  if (!el) return;
+  el.classList.remove('ship-step-active', 'ship-step-done', 'ship-step-fail');
+  if (state) el.classList.add(`ship-step-${state}`);
+}
+
 window.shipPg = async function shipPg() {
   if (!shipModalName) return;
   const message = document.getElementById('ship-message').value.trim();
@@ -1027,13 +1034,36 @@ window.shipPg = async function shipPg() {
 
   const btn = document.getElementById('ship-btn');
   btn.disabled = true;
-  btn.textContent = '보내는 중...';
+  btn.textContent = '진행 중...';
+
+  // Show steps
+  const stepsEl = document.getElementById('ship-steps');
+  stepsEl.classList.remove('hidden');
+  setShipStep('test', 'active');
+  setShipStep('push', null);
+  setShipStep('pr', null);
 
   try {
+    // Step 1: Pre-ship test
+    const testResult = await api('POST', `/api/playgrounds/${shipModalName}/pre-ship`);
+    if (!testResult.passed && !testResult.skipped) {
+      setShipStep('test', 'fail');
+      btn.textContent = '보내기';
+      btn.disabled = false;
+      toast('테스트 실패 — 터미널에서 확인해주세요', 'error');
+      return;
+    }
+    setShipStep('test', 'done');
+
+    // Step 2: Ship (squash + push)
+    setShipStep('push', 'active');
     await api('POST', `/api/playgrounds/${shipModalName}/ship`, { message });
+    setShipStep('push', 'done');
+
+    // Step 3: PR (happens in background via WebSocket)
+    setShipStep('pr', 'active');
     closeShipModal();
 
-    // Show result modal immediately — PR creation happens in background via WebSocket
     const content = document.getElementById('ship-result-content');
     content.innerHTML = `
       <p style="margin-bottom:12px">코드가 올라갔습니다!</p>

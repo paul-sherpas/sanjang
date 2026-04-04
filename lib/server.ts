@@ -731,24 +731,49 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (!message) return res.status(400).json({ error: "변경 내용을 한 줄로 설명해주세요." });
     try {
       const wtPath = campPath(name);
-      const ts = Date.now();
-      const branchName = `sanjang/${name}-${ts}`;
-      // Check for actual changes before shipping
-      spawnSync("git", ["-C", wtPath, "add", "-A"], { stdio: "pipe" });
-      spawnSync("git", ["-C", wtPath, "reset", "HEAD", "actions.json"], { stdio: "pipe" });
-      const statusCheck = spawnSync("git", ["-C", wtPath, "diff", "--cached", "--quiet"], { stdio: "pipe" });
-      if (statusCheck.status === 0) {
-        return res.status(400).json({ error: "변경된 파일이 없습니다." });
+
+      // 1. Reattach to branch if detached
+      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
+      if (headRef.status !== 0 && pg.branch) {
+        const cur = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+        if (cur) {
+          spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, cur], { stdio: "pipe" });
+          spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
+        }
       }
 
-      spawnSync("git", ["-C", wtPath, "checkout", "-b", branchName], { stdio: "pipe" });
-      spawnSync("git", ["-C", wtPath, "add", "-A"], { stdio: "pipe" });
-      spawnSync("git", ["-C", wtPath, "reset", "HEAD", "actions.json"], { stdio: "pipe" });
-      const commitResult = spawnSync("git", ["-C", wtPath, "commit", "-m", message], { stdio: "pipe" });
-      if (commitResult.status !== 0) throw new Error(commitResult.stderr?.toString() || "commit failed");
-      const pushResult = spawnSync("git", ["-C", wtPath, "push", "-u", "origin", branchName], { stdio: "pipe" });
+      // 2. Auto-save any uncommitted changes
+      const unsaved = getChangedFiles(wtPath);
+      if (unsaved.length > 0) {
+        spawnSync("git", ["-C", wtPath, "add", "-A"], { stdio: "pipe" });
+        spawnSync("git", ["-C", wtPath, "reset", "HEAD", "actions.json"], { stdio: "pipe" });
+        const statusCheck = spawnSync("git", ["-C", wtPath, "diff", "--cached", "--quiet"], { stdio: "pipe" });
+        if (statusCheck.status !== 0) {
+          spawnSync("git", ["-C", wtPath, "commit", "-m", message], { stdio: "pipe" });
+        }
+      }
+
+      // 3. Check there are commits to ship (vs base)
+      const base = pg.baseCommit;
+      const logCheck = base
+        ? spawnSync("git", ["-C", wtPath, "log", "--oneline", `${base}..HEAD`], { encoding: "utf8", stdio: "pipe" }).stdout?.trim()
+        : spawnSync("git", ["-C", wtPath, "log", "--oneline", "-1", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+      if (!logCheck) {
+        return res.status(400).json({ error: "보낼 변경사항이 없습니다." });
+      }
+
+      // 4. Squash commits since base into one clean commit
+      if (base) {
+        spawnSync("git", ["-C", wtPath, "reset", "--soft", base], { stdio: "pipe" });
+        spawnSync("git", ["-C", wtPath, "reset", "HEAD", "actions.json"], { stdio: "pipe" });
+        const squashResult = spawnSync("git", ["-C", wtPath, "commit", "-m", message], { stdio: "pipe" });
+        if (squashResult.status !== 0) throw new Error(squashResult.stderr?.toString() || "squash commit failed");
+      }
+
+      // 5. Push camp branch
+      const branchName = pg.branch;
+      const pushResult = spawnSync("git", ["-C", wtPath, "push", "-u", "--force-with-lease", "origin", `HEAD:${branchName}`], { stdio: "pipe" });
       if (pushResult.status !== 0) throw new Error(pushResult.stderr?.toString() || "push failed");
-      spawnSync("git", ["-C", wtPath, "checkout", "--detach"], { stdio: "pipe" });
 
       // Read actions before clearing (used for fallback PR body)
       const actions = readActions(name);
@@ -806,6 +831,41 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // POST /api/playgrounds/:name/pre-ship — AI가 테스트 판단 + 실행
+  app.post("/api/playgrounds/:name/pre-ship", async (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+    const wtPath = campPath(name);
+
+    broadcast({ type: "log", name, source: "sanjang", data: "🧪 테스트 확인 중..." });
+
+    try {
+      const claudeCheck = spawnSync("which", ["claude"], { stdio: "pipe" });
+      if (claudeCheck.status !== 0) {
+        return res.json({ passed: true, skipped: true, reason: "claude CLI 없음 — 테스트 생략" });
+      }
+
+      const result = spawnSync(
+        "claude",
+        ["-p", "--model", "haiku", `이 프로젝트에서 PR 전에 돌려야 할 테스트 명령어를 찾아서 실행해줘. .github/workflows/ 디렉토리, package.json scripts, Makefile 등을 확인해. typecheck과 test를 우선 실행하고 결과를 알려줘. 명령어와 결과만 간단히.`],
+        { cwd: wtPath, encoding: "utf8", stdio: "pipe", timeout: 120_000 },
+      );
+
+      const output = result.stdout?.trim() || "";
+      const failed = result.status !== 0 || /fail|error|FAIL|ERROR/i.test(output);
+
+      broadcast({ type: "log", name, source: "sanjang", data: failed ? "❌ 테스트 실패" : "✅ 테스트 통과" });
+
+      res.json({
+        passed: !failed,
+        output: output.slice(0, 3000),
+      });
+    } catch (err) {
+      res.json({ passed: false, output: (err as Error).message });
     }
   });
 

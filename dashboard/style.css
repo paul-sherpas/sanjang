@@ -2009,3 +2009,30 @@ header.hidden {
 .ws-quest-done + .ws-quest-line {
   background: #22c55e;
 }
+
+/* === Ship progress steps === */
+.ship-steps {
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ship-steps.hidden { display: none; }
+.ship-step {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  opacity: 0.4;
+}
+.ship-step.ship-step-active {
+  opacity: 1;
+  color: #fbbf24;
+}
+.ship-step.ship-step-done {
+  opacity: 1;
+  color: #22c55e;
+}
+.ship-step.ship-step-fail {
+  opacity: 1;
+  color: #ef4444;
+}
