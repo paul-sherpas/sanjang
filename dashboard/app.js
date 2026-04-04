@@ -238,6 +238,33 @@ function handleWsMessage(msg) {
       toast(data?.message || '충돌 해결에 실패했습니다.', 'error');
       break;
     }
+    case 'file-changes': {
+      if (!name || !data) break;
+      if (currentWorkspace !== name) break;
+
+      const changesEl = document.getElementById('ws-changes');
+      if (!changesEl) break;
+
+      const prevPaths = new Set(
+        [...changesEl.querySelectorAll('.ws-file-item span:last-child')].map(el => el.textContent)
+      );
+
+      if (data.count === 0) {
+        changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
+      } else {
+        changesEl.innerHTML = data.files.map(f => {
+          const isNew = !prevPaths.has(f.path);
+          return `<div class="ws-file-item${isNew ? ' ws-file-new' : ''}">
+            <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
+            <span>${escHtml(f.path)}</span>
+          </div>`;
+        }).join('');
+      }
+
+      updateChangeSummary(data.count, data.ts);
+      debouncePreviewRefresh();
+      break;
+    }
   }
 }
 
@@ -1190,6 +1217,46 @@ function renderWorkspace(data) {
   startWorkspacePolling(camp.name);
 }
 
+function updateChangeSummary(count, ts) {
+  let summary = document.getElementById('ws-changes-summary');
+  if (!summary) {
+    const changesSection = document.getElementById('ws-changes')?.parentElement;
+    if (!changesSection) return;
+    const h3 = changesSection.querySelector('h3');
+    if (!h3) return;
+    summary = document.createElement('span');
+    summary.id = 'ws-changes-summary';
+    summary.className = 'ws-changes-summary';
+    h3.appendChild(summary);
+  }
+  if (count === 0) {
+    summary.textContent = '';
+  } else {
+    const ago = ts ? timeAgo(ts) : '';
+    summary.textContent = ` · ${count}개 파일${ago ? ' · ' + ago : ''}`;
+  }
+}
+
+function timeAgo(ts) {
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5) return '방금';
+  if (sec < 60) return `${sec}초 전`;
+  return `${Math.floor(sec / 60)}분 전`;
+}
+
+let previewRefreshTimer = null;
+function debouncePreviewRefresh() {
+  if (previewRefreshTimer) clearTimeout(previewRefreshTimer);
+  previewRefreshTimer = setTimeout(() => {
+    const iframe = document.querySelector('#ws-preview iframe');
+    if (iframe) {
+      try { iframe.contentWindow.location.reload(); } catch {
+        iframe.src = iframe.src;
+      }
+    }
+  }, 1000);
+}
+
 function startWorkspacePolling(name) {
   if (wsPollingInterval) clearInterval(wsPollingInterval);
   wsPollingInterval = setInterval(async () => {
@@ -1220,7 +1287,7 @@ function startWorkspacePolling(name) {
         ).join('');
       }
     } catch { /* ignore */ }
-  }, 3000);
+  }, 10000);
 }
 
 function updateWorkspaceLog(name) {
