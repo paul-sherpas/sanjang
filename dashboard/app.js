@@ -1323,8 +1323,9 @@ function renderWorkspace(data) {
       </div>`
     ).join('');
     renderBlocks(changes.files);
-    // 변경 리포트 fetch (changes-summary 대체)
+    // 먼저 fallback으로 빠르게 렌더, 이어서 AI로 업그레이드
     fetchAndRenderReport(camp.name);
+    fetchAndRenderReport(camp.name, true);
   }
 
   // Actions — show commits as work history
