@@ -1363,16 +1363,27 @@ async function loadSuggestions() {
       return;
     }
 
-    const iconMap = { issue: '🔵', pr: '🟡', recent: '⚪' };
-    list.innerHTML = suggestions.map(item => {
+    // Exclude "recent" commits (noise) and deduplicate with "이어하기"
+    const workTitles = new Set([...playgrounds.values()].map(p => p.branch));
+    const filtered = suggestions
+      .filter(item => item.type !== 'recent')
+      .filter(item => !workTitles.has(item.action))
+      .slice(0, 5);
+
+    if (filtered.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const iconMap = { issue: '🔵', pr: '🟡' };
+    list.innerHTML = filtered.map(item => {
       const icon = iconMap[item.type] || '⚪';
       return `
-      <div class="portal-work-item" onclick="${item.action || ''}">
+      <div class="portal-work-item">
         <div class="portal-work-left">
           <span class="portal-work-icon">${icon}</span>
           <div>
             <div class="portal-work-title">${escHtml(item.title)}</div>
-            <div class="portal-work-meta">${escHtml(item.description || '')}</div>
           </div>
         </div>
       </div>`;
@@ -1389,12 +1400,14 @@ async function loadPortal() {
   try {
     const work = await api('GET', '/api/my-work');
 
+    const workSection = document.getElementById('portal-work-section');
     if (work.length === 0) {
-      workList.innerHTML = '<div class="portal-empty">진행 중인 작업이 없습니다</div>';
+      if (workSection) workSection.style.display = 'none';
       return;
     }
+    if (workSection) workSection.style.display = '';
 
-    workList.innerHTML = work.map(item => {
+    workList.innerHTML = work.slice(0, 3).map(item => {
       if (item.type === 'pr') {
         const statusLabel = item.isDraft ? '초안'
           : item.reviewStatus === 'APPROVED' ? '승인됨'

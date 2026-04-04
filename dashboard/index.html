@@ -16,23 +16,8 @@
 
   <!-- Portal Home -->
   <div id="portal">
-    <!-- 이어하기 섹션 -->
+    <!-- 새로 시작 (핵심 액션, 맨 위) -->
     <div class="portal-section">
-      <h2 class="portal-section-title">이어하기</h2>
-      <div id="portal-work" class="portal-work-list">
-        <div class="portal-loading">불러오는 중...</div>
-      </div>
-    </div>
-
-    <!-- 추천 작업 -->
-    <div class="portal-section" id="portal-suggestions-section" style="display:none">
-      <h2 class="portal-section-title">이런 걸 해볼 수 있어요</h2>
-      <div id="portal-suggestions" class="portal-work-list"></div>
-    </div>
-
-    <!-- 새로 시작 섹션 -->
-    <div class="portal-section">
-      <h2 class="portal-section-title">새로 시작</h2>
       <div class="portal-quickstart">
         <input class="form-input portal-quickstart-input" id="quickstart-input"
           type="text" placeholder="뭘 하고 싶어? (예: 로그인 버튼 색상 변경)"
@@ -40,9 +25,18 @@
           onkeydown="if(event.key==='Enter')quickStart()">
         <button class="btn btn-primary" onclick="quickStart()">시작</button>
       </div>
-      <div class="portal-quickstart-hint">
-        설명을 입력하면 자동으로 캠프가 만들어집니다
-      </div>
+    </div>
+
+    <!-- 이어하기 (최대 3개) -->
+    <div class="portal-section" id="portal-work-section" style="display:none">
+      <h2 class="portal-section-title">이어하기</h2>
+      <div id="portal-work" class="portal-work-list"></div>
+    </div>
+
+    <!-- 추천 작업 (최대 5개, 이어하기와 중복 제거) -->
+    <div class="portal-section" id="portal-suggestions-section" style="display:none">
+      <h2 class="portal-section-title">이런 걸 해볼 수 있어요</h2>
+      <div id="portal-suggestions" class="portal-work-list"></div>
     </div>
 
     <!-- 기존 캠프가 있으면 아래에 카드 그리드 표시 -->
