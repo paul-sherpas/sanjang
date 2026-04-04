@@ -1333,15 +1333,21 @@ function renderWorkspace(data) {
   const commitList = data.commits || [];
   if (commitList.length > 0) {
     actionsEl.innerHTML = commitList.map(c =>
-      `<div class="ws-commit-item" onclick="toggleCommitReport(this, '${escHtml(c.hash)}')" style="cursor:pointer">
-        <div class="ws-commit-header">
+      `<details class="ws-commit-item" data-hash="${escHtml(c.hash)}">
+        <summary class="ws-commit-header">
           <span class="ws-commit-msg">${escHtml(c.message)}</span>
           <span class="ws-commit-date">${escHtml(c.date)}</span>
-          <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="event.stopPropagation();revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
-        </div>
-        <div class="ws-commit-report" data-hash="${escHtml(c.hash)}"></div>
-      </div>`
+          <button class="btn btn-ghost btn-sm ws-revert-btn" onclick="event.stopPropagation();event.preventDefault();revertCommit('${escHtml(c.hash)}')" title="이 세이브 되돌리기">↩</button>
+        </summary>
+        <div class="ws-commit-report"></div>
+      </details>`
     ).join('');
+    // 펼칠 때 자동으로 리포트 로드
+    actionsEl.querySelectorAll('.ws-commit-item').forEach(el => {
+      el.addEventListener('toggle', function() {
+        if (this.open) loadCommitReport(this, this.dataset.hash);
+      });
+    });
   } else if (changes.count > 0) {
     actionsEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">아직 커밋 없음 (작업 중)</span>';
   } else {
@@ -1551,18 +1557,10 @@ function updateQuestProgress(hasChanges, hasSaves) {
   }
 }
 
-window.toggleCommitReport = async function(el, hash) {
+async function loadCommitReport(el, hash) {
   const reportEl = el.querySelector('.ws-commit-report');
-  if (!reportEl) return;
+  if (!reportEl || reportEl.dataset.loaded) return;
 
-  // 토글 — 이미 열려있으면 닫기
-  if (reportEl.classList.contains('open')) {
-    reportEl.classList.remove('open');
-    return;
-  }
-
-  // 로딩 표시
-  reportEl.classList.add('open');
   reportEl.innerHTML = '<div class="ws-commit-report-loading">불러오는 중...</div>';
 
   try {
@@ -1586,10 +1584,11 @@ window.toggleCommitReport = async function(el, hash) {
         }
       </div>`;
     }).join('');
+    reportEl.dataset.loaded = 'true';
   } catch {
     reportEl.innerHTML = '<div class="ws-commit-report-empty">불러오기 실패</div>';
   }
-};
+}
 
 let reportFetchTimer = null;
 function debounceReportFetch(campName) {
