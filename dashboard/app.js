@@ -2485,9 +2485,9 @@ async function loadActivityTrail() {
       if (datePrs && datePrs.length > 0) {
         const x = 20 + i * dayW + dayW / 2 - 4;
         const h = heights[i];
-        const tooltipText = datePrs.map(p => `#${p.number} ${p.title}`).join('\n');
+        const tooltipText = datePrs.map(p => `#${p.number} ${escHtml(p.title)}`).join('\n');
         prMarkers += `
-          <g class="pr-marker" data-tooltip="${tooltipText.replace(/"/g, '&quot;')}">
+          <g class="pr-marker" data-tooltip="${escHtml(tooltipText)}">
             <rect x="${x}" y="${h - 4}" width="2" height="2" fill="#8B4513"/>
             <rect x="${x + 4}" y="${h - 4}" width="2" height="2" fill="#8B4513"/>
             <rect x="${x + 2}" y="${h - 8}" width="2" height="4" fill="#ff6600"/>

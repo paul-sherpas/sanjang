@@ -1055,7 +1055,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (!files?.length) return res.status(400).json({ error: "되돌릴 파일을 선택해주세요." });
     // Validate file paths against traversal and shell injection
     for (const file of files) {
-      if (typeof file !== "string" || file.includes("..") || file.startsWith("/") || /[`$;"'\\|&]/.test(file)) {
+      if (typeof file !== "string" || file.includes("..") || file.startsWith("/") || file.startsWith("-") || /[`$;"'\\|&]/.test(file)) {
         return res.status(400).json({ error: `invalid file path: ${file}` });
       }
     }
