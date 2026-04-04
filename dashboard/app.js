@@ -356,8 +356,20 @@ function renderCard(pg) {
   const sceneClass = pixelState === 'stopped' ? 'card-scene-stars' : 'card-scene-mountains';
   const zzzHtml = pixelState === 'stopped' ? '<span class="camp-zzz">z z z</span>' : '';
 
+  const statusKo = { running: '실행 중', starting: '준비 중', stopped: '대기 중', error: '문제 발생', 'setting-up': '설치 중' };
+  const statusText = statusKo[status] || status;
+
+  // Simplified card — just a "door" to enter the workspace
+  const mainAction = status === 'error'
+    ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();autoFix('${n}')">자동으로 고치기</button>`
+    : isStopped
+    ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();startPg('${n}')">시작</button>`
+    : isRunning
+    ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();enterWorkspace('${n}')">들어가기</button>`
+    : '';
+
   return `
-<div class="card" data-name="${n}">
+<div class="card" data-name="${n}" onclick="enterWorkspace('${n}')" style="cursor:pointer">
   <div class="card-scene ${sceneClass}"></div>
   <div class="card-header">
     <div class="card-header-left">
@@ -369,69 +381,13 @@ function renderCard(pg) {
         ${zzzHtml}
       </div>
       <div class="card-header-text">
-        <span class="card-name" onclick="event.stopPropagation();enterWorkspace('${n}')" style="cursor:pointer;text-decoration:underline">${n}</span>
-        <span class="card-branch">${b}</span>
+        <span class="card-name">${n}</span>
+        <span class="card-branch">${statusText}</span>
       </div>
     </div>
     <div class="card-header-right">
-      <span class="${badgeClass}">${statusLabel}</span>
-      ${isStopped
-        ? `<button class="btn btn-primary btn-sm" onclick="startPg('${n}')">시작</button>`
-        : `<button class="btn btn-ghost btn-sm" onclick="stopPg('${n}')" ${canStop ? '' : 'disabled'}>중지</button>`
-      }
+      ${mainAction}
     </div>
-  </div>
-
-  ${isRunning ? `
-  <div class="card-urls">
-    <a href="${pg.url || `http://localhost:${fePort}`}" target="_blank" class="card-url-link">열기</a>
-  </div>` : ''}
-
-  ${status === 'error' ? `
-  <div class="card-error-hint">
-    <button class="btn btn-primary btn-sm" onclick="autoFix('${n}')">자동으로 고치기</button>
-    <span style="margin-left:8px;font-size:12px;color:var(--text-muted)">문제를 분석하고 자동으로 수정합니다</span>
-  </div>` : ''}
-
-  <div class="card-changes" id="changes-${n}"></div>
-
-  <div class="card-task" id="task-${n}">
-    ${taskStates.has(name)
-      ? `<div class="task-running">
-           <span class="task-running-indicator"></span>
-           <span class="task-running-text">작업중: ${escHtml(taskStates.get(name).prompt)}</span>
-           <button class="btn btn-ghost btn-xs" onclick="cancelTask('${n}')">취소</button>
-         </div>`
-      : `<div class="task-input-row">
-           <input class="form-input task-input" id="task-input-${n}" type="text"
-             placeholder="뭐 해줄까?" autocomplete="off" spellcheck="false"
-             onkeydown="if(event.key==='Enter')sendTask('${n}')">
-           <button class="btn btn-primary btn-sm" onclick="sendTask('${n}')">시키기</button>
-         </div>`
-    }
-  </div>
-
-  ${!isStarting ? `
-  <div class="card-actions-main">
-    <button class="btn btn-primary" title="수정된 파일 목록 보기 + 되돌리기" onclick="openChangesModal('${n}')">변경 내역</button>
-    <button class="btn btn-accent" title="변경사항을 커밋하고 원격에 push" onclick="openShipModal('${n}')">팀에 보내기</button>
-  </div>` : ''}
-
-  <div class="card-actions-sub">
-    <button class="btn btn-sub" title="현재 상태를 저장해두고 나중에 복원" onclick="openSnapModal('${n}')">📸 스냅샷</button>
-    <button class="btn btn-sub" title="브랜치의 원래 상태로 완전 초기화" onclick="resetPg('${n}')">🔄 처음부터</button>
-    <button class="btn btn-sub" title="원격의 최신 변경사항을 가져와 반영" onclick="syncPg('${n}')">⬇️ 최신</button>
-    <button class="btn btn-sub" title="에러 로그와 진단 정보 복사" onclick="copyDebugInfo('${n}')">🔧 디버그</button>
-    <button class="btn btn-sub btn-sub-danger" title="캠프를 완전히 삭제 (worktree 포함)" onclick="deletePg('${n}')">🗑 삭제</button>
-  </div>
-
-  <div class="card-footer">
-    <div class="${diagPanelClass}" id="diag-${n}"></div>
-    <div class="log-toggle" onclick="toggleLog('${n}', this)">
-      <span>로그</span>
-      <span class="log-toggle-arrow">▼</span>
-    </div>
-    <div class="log-panel" id="log-${n}"><pre></pre></div>
   </div>
 </div>`.trim();
 }
