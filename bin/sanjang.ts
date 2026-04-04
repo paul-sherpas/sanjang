@@ -138,7 +138,53 @@ if (command === "init") {
 자세히: https://github.com/paul-sherpas/sanjang
 `);
 } else {
-  // Default: start server
+  // Default: start server — auto-init if no config exists
+  const configPath = resolve(projectRoot, "sanjang.config.js");
+  if (!existsSync(configPath)) {
+    console.log("⛰ 설정 파일이 없습니다. 프로젝트를 분석합니다...\n");
+
+    const { generateConfig, detectApps } = await import("../lib/config.ts");
+    const apps = detectApps(projectRoot);
+    let appDir: string | undefined;
+
+    if (apps.length >= 2) {
+      console.log("⛰ 여러 앱이 감지되었습니다:");
+      for (let i = 0; i < apps.length; i++) {
+        console.log(`  ${i + 1}) ${apps[i]!.dir}/\t(${apps[i]!.framework})`);
+      }
+      console.log("");
+      const { createInterface } = await import("node:readline");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>((r) => { rl.question("  어떤 앱을 띄울까요? [번호]: ", r); });
+      rl.close();
+      const idx = parseInt(answer) - 1;
+      if (idx < 0 || idx >= apps.length || isNaN(idx)) {
+        console.error("⛰ 잘못된 선택입니다.");
+        process.exit(1);
+      }
+      appDir = apps[idx]!.dir;
+      console.log(`  → ${appDir}/ (${apps[idx]!.framework}) 선택됨\n`);
+    } else if (apps.length === 1) {
+      appDir = apps[0]!.dir;
+    }
+
+    const result = generateConfig(projectRoot, { appDir, force });
+    if (result.created) {
+      console.log(`⛰ ${result.message}`);
+      console.log(`  프레임워크: ${result.framework}\n`);
+    }
+
+    // Add .sanjang to .gitignore
+    const gitignorePath = resolve(projectRoot, ".gitignore");
+    if (existsSync(gitignorePath)) {
+      const { readFileSync, appendFileSync } = await import("node:fs");
+      const content = readFileSync(gitignorePath, "utf8");
+      if (!content.includes(".sanjang")) {
+        appendFileSync(gitignorePath, "\n# Sanjang local dev camps\n.sanjang/\n");
+      }
+    }
+  }
+
   const { startServer } = await import("../lib/server.ts");
   await startServer(projectRoot, { port });
 }
