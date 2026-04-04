@@ -17,6 +17,7 @@ import { getProcessInfo, setConfig, startCamp, stopAllCamps, stopCamp } from "./
 import { listSnapshots, restoreSnapshot, saveSnapshot } from "./engine/snapshot.ts";
 import { getAll, getOne, remove, setCampsDir, upsert } from "./engine/state.ts";
 import { detectWarp, openWarpTab, removeLaunchConfig } from "./engine/warp.ts";
+import { CampWatcher } from "./engine/watcher.ts";
 import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
 import { suggestTasks } from "./engine/suggest.ts";
 import { generatePrDescription } from "./engine/smart-pr.ts";
@@ -64,6 +65,7 @@ interface CreateAppResult {
   port: number;
   runningTasks: Map<string, ChildProcess>;
   warpStatus: { installed: boolean };
+  watchers: Map<string, CampWatcher>;
 }
 
 interface WorkItem {
@@ -252,6 +254,34 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Warp detection (cached for this server instance)
   const warpStatus = detectWarp();
 
+  // File watchers for running camps — push changes via WebSocket
+  const watchers = new Map<string, CampWatcher>();
+
+  function startWatcher(name: string): void {
+    if (watchers.has(name)) return;
+    const wtPath = campPath(name);
+    const watcher = new CampWatcher(wtPath, () => {
+      try {
+        const files = getChangedFiles(wtPath);
+        broadcast({
+          type: "file-changes",
+          name,
+          data: { count: files.length, files, ts: Date.now() },
+        });
+      } catch { /* ignore — worktree may be deleted */ }
+    }, 800);
+    watcher.start();
+    watchers.set(name, watcher);
+  }
+
+  function stopWatcher(name: string): void {
+    const w = watchers.get(name);
+    if (w) {
+      w.stop();
+      watchers.delete(name);
+    }
+  }
+
   // Express app
   const app = express();
   app.use(express.json());
@@ -358,6 +388,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         const updatedCamp = { ...getOne(name)!, status: "running" as const, fePort: detectedPort, url };
         upsert(updatedCamp);
         broadcast({ type: "playground-status", name, data: { status: "running", url } });
+        startWatcher(name);
       } catch (err) {
         const current = getOne(name) ?? pg;
         const processInfo = getProcessInfo(name) ?? { feLogs: [], feExitCode: null };
@@ -391,6 +422,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
               const retryUrl = `http://localhost:${retryPort}`;
               upsert({ ...getOne(name)!, status: "running", fePort: retryPort, url: retryUrl });
               broadcast({ type: "playground-status", name, data: { status: "running", url: retryUrl } });
+              startWatcher(name);
               broadcast({ type: "log", name, source: "sanjang", data: "자동 복구 성공 ✓" });
               return; // healed successfully
             } catch {
@@ -415,6 +447,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (!pg) return res.status(404).json({ error: "not found" });
     startingSet.delete(name);
     stopCamp(name);
+    stopWatcher(name);
     upsert({ ...pg, status: "stopped" });
     broadcast({ type: "playground-status", name, data: { status: "stopped" } });
     res.json({ status: "stopped" });
@@ -427,6 +460,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     try {
       startingSet.delete(name);
       stopCamp(name);
+      stopWatcher(name);
       await removeWorktree(name);
       remove(name);
       removeLaunchConfig(name);
@@ -1158,6 +1192,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         // Restart the camp after fixing config
         try {
           stopCamp(name);
+          stopWatcher(name);
           updateCampStatus(name, "starting");
           broadcast({ type: "playground-status", name, data: { status: "starting" } });
           const detectedPort = await startCamp(pg, (event) => {
@@ -1166,6 +1201,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           const url = `http://localhost:${detectedPort}`;
           upsert({ ...getOne(name)!, status: "running", fePort: detectedPort, url });
           broadcast({ type: "playground-status", name, data: { status: "running", url } });
+          startWatcher(name);
           return res.json({ fixed: true, description: fix.description });
         } catch (retryErr) {
           return res.json({ fixed: false, description: "설정을 고쳤지만 시작에 실패했습니다." });
@@ -1181,11 +1217,11 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.sendFile(join(__dirname, "..", "dashboard", "index.html"));
   });
 
-  return { app, server, port, runningTasks, warpStatus };
+  return { app, server, port, runningTasks, warpStatus, watchers };
 }
 
 export async function startServer(projectRoot: string, options: CreateAppOptions = {}): Promise<Server> {
-  const { server, port, runningTasks, warpStatus } = await createApp(projectRoot, options);
+  const { server, port, runningTasks, warpStatus, watchers } = await createApp(projectRoot, options);
   server.listen(port, "127.0.0.1", () => {
     console.log(`⛰ 산장 서버 실행 중 — http://localhost:${port}`);
     if (warpStatus.installed) {
@@ -1205,6 +1241,8 @@ export async function startServer(projectRoot: string, options: CreateAppOptions
         /* ignore */
       }
     }
+    for (const [, w] of watchers) w.stop();
+    watchers.clear();
     stopAllCamps();
     server.close(() => process.exit(0));
     // Force exit after 10s if cleanup hangs
