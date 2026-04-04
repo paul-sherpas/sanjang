@@ -25,6 +25,8 @@ let wsPollingInterval = null;
 /** @type {object|null} 마지막 리포트 캐시 — 세이브 후 축소 표시용 */
 let lastReport = null;
 
+let compareMode = false;
+
 const SHERPA_QUOTES = [
   "요구사항 또 바뀌었댜... 뭐 그러려니 하쥬",
   "'간단한 건데~' 그 말이 제일 무섭댜",
@@ -275,6 +277,19 @@ function handleWsMessage(msg) {
       updateChangeSummary(data.count, data.ts);
       updateMiniChar('running', data.count);
       debouncePreviewRefresh();
+      break;
+    }
+
+    case 'compare-ready': {
+      if (!compareMode) break;
+      const mainPreview = document.getElementById('ws-preview-main');
+      if (mainPreview && data?.port) {
+        const proxyUrl = `/preview/${data.port}/`;
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <iframe src="${escHtml(proxyUrl)}" class="ws-preview-iframe"></iframe>`;
+        toast('원본 프리뷰 준비 완료!', 'success');
+      }
       break;
     }
   }
@@ -1158,6 +1173,14 @@ function enterWorkspace(name) {
 }
 
 function exitWorkspace() {
+  compareMode = false;
+  const compareBtn = document.getElementById('ws-compare-btn');
+  if (compareBtn) compareBtn.classList.remove('btn-active');
+  const mainPreview = document.getElementById('ws-preview-main');
+  if (mainPreview) mainPreview.classList.add('hidden');
+  const container = document.getElementById('ws-preview-container');
+  if (container) container.classList.remove('ws-split-view');
+  lastReport = null;
   currentWorkspace = null;
   if (wsPollingInterval) { clearInterval(wsPollingInterval); wsPollingInterval = null; }
   document.getElementById('workspace').classList.add('hidden');
@@ -1721,6 +1744,48 @@ window.wsSave = async function() {
 
 window.togglePanel = function() {
   document.getElementById('ws-panel')?.classList.toggle('open');
+};
+
+window.toggleCompare = async function() {
+  const container = document.getElementById('ws-preview-container');
+  const mainPreview = document.getElementById('ws-preview-main');
+  const compareBtn = document.getElementById('ws-compare-btn');
+  if (!container || !mainPreview) return;
+
+  compareMode = !compareMode;
+
+  if (compareMode) {
+    compareBtn.classList.add('btn-active');
+    mainPreview.classList.remove('hidden');
+    container.classList.add('ws-split-view');
+
+    toast('원본 서버를 준비하고 있어요...', 'info');
+    try {
+      const state = await api('POST', '/api/compare/start');
+      if (state.status === 'running' && state.port) {
+        const proxyUrl = `/preview/${state.port}/`;
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <iframe src="${escHtml(proxyUrl)}" class="ws-preview-iframe"></iframe>`;
+      } else if (state.status === 'starting') {
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <div class="ws-preview-loading">준비 중...</div>`;
+      } else {
+        mainPreview.innerHTML = `
+          <div class="ws-preview-label">🏔️ 원본 (main)</div>
+          <div class="ws-preview-loading">원본 서버를 시작하지 못했어요</div>`;
+      }
+    } catch {
+      mainPreview.innerHTML = `
+        <div class="ws-preview-label">🏔️ 원본 (main)</div>
+        <div class="ws-preview-loading">원본 서버를 시작하지 못했어요</div>`;
+    }
+  } else {
+    compareBtn.classList.remove('btn-active');
+    mainPreview.classList.add('hidden');
+    container.classList.remove('ws-split-view');
+  }
 };
 
 // ---------------------------------------------------------------------------
