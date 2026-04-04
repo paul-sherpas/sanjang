@@ -527,6 +527,17 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     if (files.length === 0) return res.json({ saved: false, reason: "변경사항이 없습니다." });
 
     try {
+      // Reattach to branch if in detached HEAD state
+      const headRef = spawnSync("git", ["-C", wtPath, "symbolic-ref", "--quiet", "HEAD"], { encoding: "utf8", stdio: "pipe" });
+      if (headRef.status !== 0 && pg.branch) {
+        // Detached HEAD — move branch pointer to current commit and checkout
+        const currentCommit = spawnSync("git", ["-C", wtPath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: "pipe" }).stdout?.trim();
+        if (currentCommit) {
+          spawnSync("git", ["-C", wtPath, "branch", "-f", pg.branch, currentCommit], { stdio: "pipe" });
+          spawnSync("git", ["-C", wtPath, "checkout", pg.branch], { stdio: "pipe" });
+        }
+      }
+
       // Stage all changes
       runGit(["-C", wtPath, "add", "-A"], wtPath);
 
