@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
+import { connect as netConnect } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
@@ -357,7 +358,54 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   app.use(express.static(dashboardDir));
 
   const server = createServer(app);
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ noServer: true });
+
+  // -----------------------------------------------------------------------
+  // WebSocket upgrade — route HMR WS to camp dev servers, others to sanjang WSS
+  // -----------------------------------------------------------------------
+  server.on("upgrade", (req, socket, head) => {
+    const url = req.url || "/";
+    const hmrMatch = /^\/preview\/(\d+)(\/.*)?$/.exec(url);
+
+    if (hmrMatch) {
+      const targetPort = parseInt(hmrMatch[1]!, 10);
+      if (!Number.isFinite(targetPort) || targetPort < 1000 || targetPort > 65535) {
+        socket.destroy();
+        return;
+      }
+      // Verify it's a known camp port
+      const camps = getAll();
+      const mainState = getMainServerState();
+      const isKnown = camps.some((c) => c.fePort === targetPort) ||
+        (mainState.status === "running" && mainState.port === targetPort);
+      if (!isKnown) {
+        socket.destroy();
+        return;
+      }
+
+      // Proxy WS to the target dev server
+      const targetPath = hmrMatch[2] || "/";
+      const proxy = netConnect({ host: "127.0.0.1", port: targetPort }, () => {
+        // Rewrite the request line to target path and forward the upgrade
+        const reqLine = `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n`;
+        const headers = Object.entries(req.headers)
+          .filter(([k]) => k.toLowerCase() !== "host")
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+          .join("\r\n");
+        proxy.write(`${reqLine}host: localhost:${targetPort}\r\n${headers}\r\n\r\n`);
+        if (head.length > 0) proxy.write(head);
+        socket.pipe(proxy).pipe(socket);
+      });
+
+      proxy.on("error", () => socket.destroy());
+      socket.on("error", () => proxy.destroy());
+    } else {
+      // Sanjang dashboard WS
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    }
+  });
 
   function broadcast(msg: BroadcastMessage): void {
     const text = JSON.stringify(msg);

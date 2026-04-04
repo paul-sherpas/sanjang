@@ -60,13 +60,51 @@ function navigatePreview(route) {
     const base = new URL(iframe.src);
     base.pathname = route;
     iframe.contentWindow.location.href = base.toString();
-    toast(`${route} 로 이동`, 'info');
   } catch {
     // cross-origin — reload with new path
     const src = iframe.src.replace(/\/preview\/(\d+)\/.*/, `/preview/$1${route}`);
     iframe.src = src;
   }
+  updateUrlBar(route);
 }
+
+function updateUrlBar(route) {
+  const input = document.getElementById('ws-url-input');
+  if (input) input.value = route || '/';
+}
+
+window.previewBack = function previewBack() {
+  const iframe = document.querySelector('#ws-preview iframe');
+  if (!iframe) return;
+  try { iframe.contentWindow.history.back(); } catch { /* cross-origin */ }
+};
+
+window.previewRefresh = function previewRefresh() {
+  const iframe = document.querySelector('#ws-preview iframe');
+  if (!iframe) return;
+  try { iframe.contentWindow.location.reload(); } catch { iframe.src = iframe.src; }
+};
+
+// Viewport presets
+const VIEWPORTS = {
+  desktop: { width: '100%', height: '100%', label: '데스크탑' },
+  tablet: { width: '768px', height: '100%', label: '태블릿' },
+  mobile: { width: '375px', height: '100%', label: '모바일' },
+};
+let currentViewport = 'desktop';
+
+window.setViewport = function setViewport(size) {
+  currentViewport = size;
+  const vp = VIEWPORTS[size];
+  const iframe = document.querySelector('#ws-preview iframe');
+  if (!iframe) return;
+  iframe.style.maxWidth = vp.width;
+  iframe.style.margin = size === 'desktop' ? '0' : '0 auto';
+  iframe.style.transition = 'max-width 0.2s ease';
+  // Update active button
+  document.querySelectorAll('.ws-vp-btn').forEach(btn => btn.classList.remove('ws-vp-active'));
+  document.querySelector(`.ws-vp-btn[onclick*="${size}"]`)?.classList.add('ws-vp-active');
+};
 
 /** @type {Map<string, Array>} diagnostics keyed by playground name */
 const diagnostics = new Map();
@@ -1236,6 +1274,8 @@ function exitWorkspace() {
   if (mainPreview) mainPreview.classList.add('hidden');
   const container = document.getElementById('ws-preview-container');
   if (container) container.classList.remove('ws-split-view');
+  const exitToolbar = document.getElementById('ws-preview-toolbar');
+  if (exitToolbar) exitToolbar.style.display = 'none';
   lastReport = null;
   currentWorkspace = null;
   if (wsPollingInterval) { clearInterval(wsPollingInterval); wsPollingInterval = null; }
@@ -1421,6 +1461,7 @@ function renderWorkspace(data) {
 
   // Preview — use proxy URL (same origin, no X-Frame-Options issues)
   const previewEl = document.getElementById('ws-preview');
+  const previewToolbar = document.getElementById('ws-preview-toolbar');
   if (previewUrl) {
     const port = new URL(previewUrl).port || '80';
     const proxyUrl = `/preview/${port}/`;
@@ -1436,7 +1477,11 @@ function renderWorkspace(data) {
       iframe.style.display = 'none';
       previewEl.querySelector('.ws-preview-fallback').style.display = 'flex';
     });
+    if (previewToolbar) previewToolbar.style.display = '';
+    updateUrlBar('/');
+    if (currentViewport !== 'desktop') setViewport(currentViewport);
   } else {
+    if (previewToolbar) previewToolbar.style.display = 'none';
     previewEl.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;user-select:none;">
         <div style="width:4px;height:4px;image-rendering:pixelated;color:transparent;box-shadow:

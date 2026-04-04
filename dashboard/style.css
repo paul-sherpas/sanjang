@@ -2226,6 +2226,71 @@ details.ws-commit-item[open] .ws-commit-arrow { transform: rotate(90deg); }
 .ws-commit-cat-item { color: var(--text-muted); padding-left: 12px; position: relative; line-height: 1.5; }
 .ws-commit-cat-item::before { content: '•'; position: absolute; left: 3px; color: var(--text-muted); }
 
+/* Preview toolbar — URL bar + viewport switcher */
+.ws-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.ws-url-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.ws-url-back, .ws-url-refresh {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ws-url-back:hover, .ws-url-refresh:hover { background: var(--surface); color: var(--text); }
+.ws-url-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ws-url-input:focus { outline: none; border-color: var(--accent); }
+.ws-viewport-switcher {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.ws-vp-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ws-vp-btn:hover { background: var(--surface); }
+.ws-vp-btn.ws-vp-active { background: var(--surface); border-color: var(--accent); }
+
 /* Split-view compare */
 .ws-preview-container { position: relative; flex: 1; display: flex; }
 .ws-preview-container .ws-preview-full { flex: 1; }

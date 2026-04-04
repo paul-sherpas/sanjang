@@ -81,6 +81,21 @@
       <button class="btn btn-sub btn-sm" onclick="togglePanel()">⛰ 패널</button>
     </div>
 
+    <!-- Preview toolbar — URL bar + viewport switcher -->
+    <div class="ws-preview-toolbar" id="ws-preview-toolbar" style="display:none">
+      <div class="ws-url-bar">
+        <button class="ws-url-back" onclick="previewBack()" title="뒤로">←</button>
+        <button class="ws-url-refresh" onclick="previewRefresh()" title="새로고침">↻</button>
+        <input class="ws-url-input" id="ws-url-input" type="text" placeholder="/" spellcheck="false"
+          onkeydown="if(event.key==='Enter')navigatePreview(this.value)">
+      </div>
+      <div class="ws-viewport-switcher">
+        <button class="ws-vp-btn ws-vp-active" onclick="setViewport('desktop')" title="데스크탑">🖥</button>
+        <button class="ws-vp-btn" onclick="setViewport('tablet')" title="태블릿">📱</button>
+        <button class="ws-vp-btn" onclick="setViewport('mobile')" title="모바일">📲</button>
+      </div>
+    </div>
+
     <!-- Preview — full screen with optional split -->
     <div class="ws-preview-container" id="ws-preview-container">
       <div class="ws-preview-full" id="ws-preview"></div>
