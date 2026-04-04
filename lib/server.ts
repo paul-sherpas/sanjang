@@ -175,26 +175,26 @@ function setupCampDeps(
   }
 
   const setupCwd = cfg.dev?.cwd || ".";
-  const cacheResult = applyCacheToWorktree(getProjectRoot(), wtPath, setupCwd);
+  const isBun = cfg.setup.includes("bun install");
 
-  if (cacheResult.applied) {
-    broadcast({
-      type: "log",
-      name,
-      source: "sanjang",
-      data: `캐시에서 node_modules 복사 완료 ✓ (${cacheResult.duration}ms)`,
-    });
-    updateCampStatus(name, "stopped");
-    broadcast({ type: "playground-status", name, data: { status: "stopped" } });
-    return;
+  // bun projects: skip cache (bun uses absolute symlinks that break in worktrees)
+  if (!isBun) {
+    const cacheResult = applyCacheToWorktree(getProjectRoot(), wtPath, setupCwd);
+    if (cacheResult.applied) {
+      broadcast({
+        type: "log",
+        name,
+        source: "sanjang",
+        data: `캐시에서 node_modules 복사 완료 ✓ (${cacheResult.duration}ms)`,
+      });
+      updateCampStatus(name, "stopped");
+      broadcast({ type: "playground-status", name, data: { status: "stopped" } });
+      return;
+    }
+    broadcast({ type: "log", name, source: "sanjang", data: `캐시 없음 (${cacheResult.reason}), 설치 중...` });
+  } else {
+    broadcast({ type: "log", name, source: "sanjang", data: "bun install 실행 중... (bun은 캐시 대신 직접 설치)" });
   }
-
-  broadcast({
-    type: "log",
-    name,
-    source: "sanjang",
-    data: `캐시 없음 (${cacheResult.reason}), 설치 중 (${cfg.setup})...`,
-  });
   const setupProc = spawn(cfg.setup, [], {
     cwd: wtPath,
     shell: true,
