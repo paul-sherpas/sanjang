@@ -196,12 +196,10 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
   }
 
   // Step 2: Frontend
-  // When portFlag is null, dev server uses its own fixed port (config.dev.port)
-  const actualPort = dev.portFlag ? fePort : dev.port;
-  onEvent({ type: "log", source: "sanjang", data: `Frontend(:${actualPort}) 시작 중...` });
+  onEvent({ type: "log", source: "sanjang", data: "Frontend 준비 중..." });
   onEvent({ type: "status", data: "starting-frontend" });
 
-  // Build command with port flag (null = no port override)
+  // Build command — try to pass port flag if available, but always verify via stdout
   const fullCommand = dev.portFlag ? `${dev.command} ${dev.portFlag} ${fePort}` : dev.command;
   const cwd = dev.cwd ? join(wtPath, dev.cwd) : wtPath;
 
@@ -229,19 +227,15 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
 
   onEvent({ type: "status", data: "waiting-for-vite" });
 
-  // When portFlag is null, we can't control the port — detect it from stdout
-  let detectedPort = actualPort;
-  if (!dev.portFlag) {
-    const parsed = await detectPortFromStdout(entry.feLogs, 60_000);
-    if (parsed) {
-      detectedPort = parsed;
-      onEvent({ type: "port-detected", data: { port: detectedPort } });
-    }
-  } else {
-    await waitForPort(actualPort, 60_000);
+  // Always detect actual URL from stdout — never guess
+  const detectedPort = await detectPortFromStdout(entry.feLogs, 90_000);
+  if (!detectedPort) {
+    throw new Error("dev 서버가 시작되지 않았습니다. 로그를 확인하세요.");
   }
 
-  onEvent({ type: "log", source: "sanjang", data: `Frontend 시작 완료 ✓ → http://localhost:${detectedPort}` });
+  const url = `http://localhost:${detectedPort}`;
+  onEvent({ type: "log", source: "sanjang", data: `Frontend 준비 완료 ✓` });
+  onEvent({ type: "url-detected", data: { url, port: detectedPort } });
   onEvent({ type: "status", data: "running" });
   return detectedPort;
 }

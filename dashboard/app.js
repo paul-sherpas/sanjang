@@ -384,7 +384,7 @@ function renderCard(pg) {
 
   ${isRunning ? `
   <div class="card-urls">
-    <a href="http://localhost:${fePort}" target="_blank" class="card-url-link">열기 → localhost:${fePort}</a>
+    <a href="${pg.url || `http://localhost:${fePort}`}" target="_blank" class="card-url-link">열기</a>
   </div>` : ''}
 
   ${status === 'error' ? `
@@ -629,7 +629,7 @@ window.copyDebugInfo = async function copyDebugInfo(name) {
     `- Name: ${pg.name}`,
     `- Branch: ${pg.branch}`,
     `- Status: ${pg.status}`,
-    `- Ports: FE=${pg.fePort}, BE=${pg.bePort}, nREPL=${pg.replPort}`,
+    `- URL: ${pg.url || "(시작 전)"}`,
     ``,
     `### Diagnostics`,
     diagText || '  (none)',

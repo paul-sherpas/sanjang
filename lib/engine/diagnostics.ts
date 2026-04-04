@@ -30,9 +30,9 @@ function checkPortConflict(processInfo: ProcessInfo): DiagnosticCheck {
   return {
     name: "port-conflict",
     status: hit ? "error" : "ok",
-    detail: hit ? "포트가 이미 사용 중입니다." : "포트 충돌 없음.",
+    detail: hit ? "다른 프로그램과 충돌이 발생했습니다." : "정상.",
     guide: hit
-      ? '다른 프로그램이 같은 포트를 쓰고 있어요. "중지" → "시작"을 눌러보세요. 계속되면 "삭제" 후 다시 만들어보세요.'
+      ? '"중지" → "시작"을 눌러보세요. 계속되면 "삭제" 후 다시 만들어보세요.'
       : null,
   };
 }
@@ -67,12 +67,12 @@ function checkFePort(pg: PlaygroundInfo): DiagnosticCheck {
   const output = tryExec(`lsof -i :${port} -t`);
 
   return {
-    name: "fe-port",
+    name: "fe-status",
     status: output?.length ? "ok" : "warn",
     detail: output?.length
-      ? `Frontend 포트 ${port}이 사용 중 (PID: ${output}).`
-      : `Frontend 포트 ${port}이 비어있습니다.`,
-    guide: !output?.length ? '서버가 아직 준비 안 됐거나 종료됐어요. "시작" 버튼을 눌러보세요.' : null,
+      ? "Frontend 서버가 실행 중입니다."
+      : "Frontend 서버가 응답하지 않습니다.",
+    guide: !output?.length ? '"시작" 버튼을 눌러보세요.' : null,
   };
 }
 

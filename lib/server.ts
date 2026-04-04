@@ -141,18 +141,17 @@ function friendlyError(err: unknown, branch: string): string {
   if (/invalid reference/.test(msg)) return `"${branch}" 브랜치를 찾을 수 없습니다.`;
   if (/already exists/.test(msg)) return "이미 같은 이름의 캠프가 있습니다.";
   if (/already checked out/.test(msg)) return "이 브랜치가 다른 곳에서 사용 중입니다.";
-  if (/No available port/.test(msg)) return "포트가 부족합니다.";
-  if (/cache copy failed/.test(msg))
-    return "캐시 복사에 실패했습니다. POST /api/cache/rebuild 로 캐시를 다시 빌드해보세요.";
-  if (/setup failed/.test(msg)) return "의존성 설치에 실패했습니다. 프로젝트 루트에서 직접 설치 명령을 실행해보세요.";
+  if (/No available port/.test(msg)) return "캠프를 더 만들 수 없습니다. 기존 캠프를 삭제해주세요.";
+  if (/cache copy failed/.test(msg)) return "설치 준비에 실패했습니다. 다시 시도해주세요.";
+  if (/setup failed/.test(msg)) return "의존성 설치에 실패했습니다. 다시 시도해주세요.";
   if (/ENOSPC/.test(msg)) return "디스크 공간이 부족합니다.";
   return msg;
 }
 
 function friendlyStartError(err: unknown): string {
   const msg = (err as Error)?.message || String(err);
-  if (/Timeout waiting for port|포트.*열리지/.test(msg)) return "서버가 시작하는 데 너무 오래 걸립니다.";
-  if (/ECONNREFUSED/.test(msg)) return "서버 연결이 거부됐습니다.";
+  if (/Timeout|시작되지 않았|열리지/.test(msg)) return "시작하는 데 시간이 오래 걸리고 있습니다. 다시 시도해주세요.";
+  if (/ECONNREFUSED/.test(msg)) return "서버에 연결할 수 없습니다. 다시 시도해주세요.";
   return msg;
 }
 
@@ -351,10 +350,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         const detectedPort = await startCamp(pg, (event) => {
           broadcast({ type: event.type, name, data: event.data, source: event.source });
         });
-        // Update fePort if the dev server picked a different port (portFlag: null)
-        const updatedCamp = { ...getOne(name)!, status: "running" as const, fePort: detectedPort };
+        const url = `http://localhost:${detectedPort}`;
+        const updatedCamp = { ...getOne(name)!, status: "running" as const, fePort: detectedPort, url };
         upsert(updatedCamp);
-        broadcast({ type: "playground-status", name, data: { status: "running", fePort: detectedPort } });
+        broadcast({ type: "playground-status", name, data: { status: "running", url } });
       } catch (err) {
         const current = getOne(name) ?? pg;
         upsert({ ...current, status: "error" });
