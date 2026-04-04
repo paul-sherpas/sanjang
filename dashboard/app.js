@@ -12,6 +12,62 @@ const playgrounds = new Map();
 /** @type {Map<string, Array<{text: string, source: string}>>} logs keyed by playground name */
 const logs = new Map();
 
+// ---------------------------------------------------------------------------
+// Route inference — map file paths to preview routes
+// ---------------------------------------------------------------------------
+
+/**
+ * Infer a preview route from a file path.
+ * Only works for file-based routing patterns (pages/, app/, views/).
+ * Returns null if no route can be inferred.
+ */
+function inferRouteFromPath(filePath) {
+  const lower = filePath.toLowerCase();
+
+  // Match pages/xxx.tsx, app/xxx/page.tsx, views/xxx.vue etc.
+  const patterns = [
+    // Next.js app router: app/dashboard/page.tsx → /dashboard
+    { regex: /(?:^|[/\\])app[/\\](.+?)[/\\]page\.[^.]+$/, transform: m => '/' + m },
+    // Next.js app router: app/page.tsx → /
+    { regex: /(?:^|[/\\])app[/\\]page\.[^.]+$/, transform: () => '/' },
+    // Next.js/Nuxt pages router: pages/login.tsx → /login
+    { regex: /(?:^|[/\\])pages[/\\](.+?)(?:\.[^.]+)$/, transform: m => '/' + m },
+    // views/: views/Login.vue → /login
+    { regex: /(?:^|[/\\])views[/\\](.+?)(?:\.[^.]+)$/, transform: m => '/' + m },
+  ];
+
+  for (const { regex, transform } of patterns) {
+    const match = regex.exec(lower);
+    if (match) {
+      let route = transform(match[1] || '');
+      // Clean up: remove index, trailing slash dupes
+      route = route.replace(/\/index$/, '/').replace(/\/+/g, '/');
+      // Remove dynamic route brackets for navigation: [id] → placeholder
+      route = route.replace(/\[([^\]]+)\]/g, '1');
+      return route || '/';
+    }
+  }
+  return null;
+}
+
+/**
+ * Navigate the preview iframe to a given route.
+ */
+function navigatePreview(route) {
+  const iframe = document.querySelector('#ws-preview iframe');
+  if (!iframe) return;
+  try {
+    const base = new URL(iframe.src);
+    base.pathname = route;
+    iframe.contentWindow.location.href = base.toString();
+    toast(`${route} 로 이동`, 'info');
+  } catch {
+    // cross-origin — reload with new path
+    const src = iframe.src.replace(/\/preview\/(\d+)\/.*/, `/preview/$1${route}`);
+    iframe.src = src;
+  }
+}
+
 /** @type {Map<string, Array>} diagnostics keyed by playground name */
 const diagnostics = new Map();
 
@@ -1255,12 +1311,20 @@ async function fetchAndRenderReport(campName, withAi = false) {
           <span class="ws-report-cat-count">${files.length}</span>
         </div>
         ${hasDetails
-          ? `<ul class="ws-report-cat-items">${items.map(item =>
-              `<li>${escHtml(item)}</li>`
-            ).join('')}</ul>`
-          : `<ul class="ws-report-cat-items">${files.map(f =>
-              `<li>${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</li>`
-            ).join('')}</ul>`
+          ? `<ul class="ws-report-cat-items">${items.map((item, idx) => {
+              const file = files[idx];
+              const route = cat === 'ui' && file ? inferRouteFromPath(file.path) : null;
+              return route
+                ? `<li class="ws-report-nav-item" onclick="navigatePreview('${escHtml(route)}')" title="${escHtml(file.path)} → ${escHtml(route)}">${escHtml(item)} <span class="ws-report-nav-hint">→ 보기</span></li>`
+                : `<li>${escHtml(item)}</li>`;
+            }).join('')}</ul>`
+          : `<ul class="ws-report-cat-items">${files.map(f => {
+              const route = cat === 'ui' ? inferRouteFromPath(f.path) : null;
+              const label = `${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}`;
+              return route
+                ? `<li class="ws-report-nav-item" onclick="navigatePreview('${escHtml(route)}')" title="${escHtml(f.path)} → ${escHtml(route)}">${label} <span class="ws-report-nav-hint">→ 보기</span></li>`
+                : `<li>${label}</li>`;
+            }).join('')}</ul>`
         }
       </div>`;
     }).join('');
@@ -1580,8 +1644,20 @@ async function loadCommitReport(el, hash) {
       return `<div class="ws-commit-cat">
         <span class="ws-commit-cat-label">${categoryNames[cat] || cat}</span>
         ${hasDetails
-          ? items.map(item => `<div class="ws-commit-cat-item">${escHtml(item)}</div>`).join('')
-          : files.map(f => `<div class="ws-commit-cat-item">${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}</div>`).join('')
+          ? items.map((item, idx) => {
+              const file = files[idx];
+              const route = cat === 'ui' && file ? inferRouteFromPath(file.path) : null;
+              return route
+                ? `<div class="ws-commit-cat-item ws-report-nav-item" onclick="navigatePreview('${escHtml(route)}')" title="${escHtml(file.path)} → ${escHtml(route)}">${escHtml(item)} <span class="ws-report-nav-hint">→ 보기</span></div>`
+                : `<div class="ws-commit-cat-item">${escHtml(item)}</div>`;
+            }).join('')
+          : files.map(f => {
+              const route = cat === 'ui' ? inferRouteFromPath(f.path) : null;
+              const label = `${escHtml(f.path.split('/').pop() || f.path)} ${f.status === '새 파일' ? '추가됨' : '수정됨'}`;
+              return route
+                ? `<div class="ws-commit-cat-item ws-report-nav-item" onclick="navigatePreview('${escHtml(route)}')" title="${escHtml(f.path)} → ${escHtml(route)}">${label} <span class="ws-report-nav-hint">→ 보기</span></div>`
+                : `<div class="ws-commit-cat-item">${label}</div>`;
+            }).join('')
         }
       </div>`;
     }).join('');
@@ -1677,15 +1753,21 @@ function renderBrowserErrors() {
   const panel = document.getElementById('ws-browser-errors');
   if (!panel) return;
   const badge = document.getElementById('ws-browser-error-badge');
+  const fixBtn = document.getElementById('ws-fix-btn');
+  // Show fix button if there are browser errors OR server error logs
+  const serverHasErrors = currentWorkspace && (logs.get(currentWorkspace) ?? [])
+    .some(l => l.source !== 'frontend' && l.source !== 'task' && /error|ERR|ENOENT|ECONNREFUSED|TypeError|SyntaxError|Cannot find/i.test(l.text));
   if (browserErrors.length === 0) {
     panel.innerHTML = '<span style="color:var(--text-muted);font-size:12px">에러 없음</span>';
     if (badge) badge.style.display = 'none';
+    if (fixBtn) fixBtn.style.display = serverHasErrors ? '' : 'none';
     return;
   }
   if (badge) {
     badge.style.display = '';
     badge.textContent = browserErrors.length;
   }
+  if (fixBtn) fixBtn.style.display = '';
   panel.innerHTML = browserErrors.slice(-20).reverse().map(e => {
     const loc = e.source ? ` <span style="color:var(--text-muted)">${escHtml(e.source.split('/').pop())}:${e.line || ''}</span>` : '';
     return `<div class="ws-browser-error-item">
@@ -1715,6 +1797,74 @@ window.revertCommit = async function revertCommit(hash) {
     renderWorkspace(data);
   } catch (err) {
     toast(`되돌리기 실패: ${err.message}`, 'error');
+  }
+};
+
+/**
+ * Build a structured prompt from browser errors + server logs
+ * that Claude Code can use to diagnose and fix the issue.
+ */
+window.copyFixPrompt = async function copyFixPrompt() {
+  const name = currentWorkspace;
+  if (!name) return;
+
+  const sections = [];
+
+  // 1. Browser errors
+  if (browserErrors.length > 0) {
+    const errs = browserErrors.slice(-10).map(e => {
+      let line = `[${e.level}] ${e.message}`;
+      if (e.source) line += `\n  위치: ${e.source}${e.line ? ':' + e.line : ''}${e.col ? ':' + e.col : ''}`;
+      return line;
+    }).join('\n\n');
+    sections.push(`## 브라우저 에러 (${browserErrors.length}개)\n\n${errs}`);
+  }
+
+  // 2. Server logs (last 20 lines, stderr/error only)
+  const serverLines = (logs.get(name) ?? [])
+    .filter(l => l.source !== 'frontend' && l.source !== 'task')
+    .slice(-20)
+    .map(l => l.text.trim())
+    .filter(Boolean);
+  if (serverLines.length > 0) {
+    sections.push(`## 서버 로그 (최근)\n\n${serverLines.join('\n')}`);
+  }
+
+  // 3. Current changes context
+  try {
+    const changes = await api('GET', `/api/playgrounds/${name}/changes`);
+    if (changes.files?.length > 0) {
+      const fileList = changes.files.map(f => `- ${f.status} ${f.path}`).join('\n');
+      sections.push(`## 현재 수정된 파일\n\n${fileList}`);
+    }
+  } catch { /* ignore */ }
+
+  if (sections.length === 0) {
+    toast('복사할 에러가 없습니다', 'info');
+    return;
+  }
+
+  const prompt = `아래 에러를 분석하고 수정해줘.
+
+에러를 읽고 근본 원인을 먼저 파악한 다음, 최소한의 변경으로 고쳐줘.
+추측하지 말고 에러 메시지와 스택 트레이스를 근거로 진단해.
+수정 후 관련 파일만 변경하고, 변경 이유를 간단히 설명해줘.
+
+${sections.join('\n\n---\n\n')}`;
+
+  try {
+    await navigator.clipboard.writeText(prompt);
+    toast('📋 에러 프롬프트 복사 완료 — Claude Code에 붙여넣기', 'success');
+  } catch {
+    // Fallback for non-HTTPS
+    const ta = document.createElement('textarea');
+    ta.value = prompt;
+    ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    toast('📋 에러 프롬프트 복사 완료 — Claude Code에 붙여넣기', 'success');
   }
 };
 
