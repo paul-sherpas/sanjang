@@ -1,6 +1,6 @@
 {
   "name": "sanjang",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "AI dev environment for vibe coders — camp isolation, self-healing, smart PR",
   "type": "module",
   "bin": {
