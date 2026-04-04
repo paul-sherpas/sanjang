@@ -27,6 +27,40 @@ export function setConfig(config: SanjangConfig): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Detect actual port from dev server stdout (Vite: "➜  Local: http://localhost:3004/")
+function detectPortFromStdout(logs: string[], timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    // Patterns: Vite "Local:   http://localhost:PORT/", Next "- Local: http://localhost:PORT"
+    const portRe = /https?:\/\/localhost:(\d+)/;
+
+    function check(): void {
+      for (const line of logs) {
+        const match = portRe.exec(line);
+        if (match?.[1]) {
+          const port = parseInt(match[1], 10);
+          // Wait briefly for the port to actually be ready
+          const sock = createConnection({ port, host: "localhost" });
+          sock.once("connect", () => { sock.destroy(); resolve(port); });
+          sock.once("error", () => {
+            sock.destroy();
+            // Port printed but not ready yet, retry
+            if (Date.now() < deadline) setTimeout(check, 1000);
+            else resolve(port); // return the port anyway
+          });
+          return;
+        }
+      }
+      if (Date.now() >= deadline) {
+        resolve(null);
+      } else {
+        setTimeout(check, 1000);
+      }
+    }
+    check();
+  });
+}
+
 function waitForPort(port: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
@@ -139,7 +173,7 @@ interface StartCampParams {
   fePort: number;
 }
 
-export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Promise<void> {
+export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Promise<number> {
   const { name, fePort } = pg;
   const wtPath = campPath(name);
   const dev = projectConfig?.dev;
@@ -194,10 +228,22 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
   });
 
   onEvent({ type: "status", data: "waiting-for-vite" });
-  await waitForPort(actualPort, 60_000);
 
-  onEvent({ type: "log", source: "sanjang", data: `Frontend 시작 완료 ✓ → http://localhost:${actualPort}` });
+  // When portFlag is null, we can't control the port — detect it from stdout
+  let detectedPort = actualPort;
+  if (!dev.portFlag) {
+    const parsed = await detectPortFromStdout(entry.feLogs, 60_000);
+    if (parsed) {
+      detectedPort = parsed;
+      onEvent({ type: "port-detected", data: { port: detectedPort } });
+    }
+  } else {
+    await waitForPort(actualPort, 60_000);
+  }
+
+  onEvent({ type: "log", source: "sanjang", data: `Frontend 시작 완료 ✓ → http://localhost:${detectedPort}` });
   onEvent({ type: "status", data: "running" });
+  return detectedPort;
 }
 
 export function stopCamp(name: string): void {

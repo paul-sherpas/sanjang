@@ -348,11 +348,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     (async () => {
       try {
-        await startCamp(pg, (event) => {
+        const detectedPort = await startCamp(pg, (event) => {
           broadcast({ type: event.type, name, data: event.data, source: event.source });
         });
-        upsert({ ...getOne(name)!, status: "running" });
-        broadcast({ type: "playground-status", name, data: { status: "running" } });
+        // Update fePort if the dev server picked a different port (portFlag: null)
+        const updatedCamp = { ...getOne(name)!, status: "running" as const, fePort: detectedPort };
+        upsert(updatedCamp);
+        broadcast({ type: "playground-status", name, data: { status: "running", fePort: detectedPort } });
       } catch (err) {
         const current = getOne(name) ?? pg;
         upsert({ ...current, status: "error" });
