@@ -18,6 +18,9 @@ import { listSnapshots, restoreSnapshot, saveSnapshot } from "./engine/snapshot.
 import { getAll, getOne, remove, setCampsDir, upsert } from "./engine/state.ts";
 import { detectWarp, openWarpTab } from "./engine/warp.ts";
 import { diagnoseFromLogs, executeHeal } from "./engine/self-heal.ts";
+import { suggestTasks } from "./engine/suggest.ts";
+import { generatePrDescription } from "./engine/smart-pr.ts";
+import { suggestConfigFix, applyConfigFix } from "./engine/config-hotfix.ts";
 import {
   addWorktree,
   campPath,
@@ -1116,6 +1119,62 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       spawnSync("git", ["branch", "-D", branch], { stdio: "pipe" });
       res.status(500).json({ error: friendlyError(err, branch) });
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Agent features (suggestions, smart-pr, auto-fix)
+  // -------------------------------------------------------------------------
+
+  app.get("/api/suggestions", async (_req: Request, res: Response) => {
+    try {
+      const suggestions = await suggestTasks(projectRoot);
+      res.json(suggestions);
+    } catch {
+      res.json([]); // graceful degradation
+    }
+  });
+
+  app.post("/api/playgrounds/:name/smart-pr", async (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+    const wtPath = campPath(name);
+    const description = await generatePrDescription(wtPath);
+    res.json({ description });
+  });
+
+  app.post("/api/playgrounds/:name/auto-fix", async (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+
+    const processInfo = getProcessInfo(name);
+    const logs = processInfo?.feLogs ?? [];
+
+    // Try config hotfix
+    const fix = suggestConfigFix(projectRoot, logs);
+    if (fix && fix.type !== "info") {
+      const applied = applyConfigFix(projectRoot, fix);
+      if (applied) {
+        // Restart the camp after fixing config
+        try {
+          stopCamp(name);
+          updateCampStatus(name, "starting");
+          broadcast({ type: "playground-status", name, data: { status: "starting" } });
+          const detectedPort = await startCamp(pg, (event) => {
+            broadcast({ type: event.type, name, data: event.data, source: event.source });
+          });
+          const url = `http://localhost:${detectedPort}`;
+          upsert({ ...getOne(name)!, status: "running", fePort: detectedPort, url });
+          broadcast({ type: "playground-status", name, data: { status: "running", url } });
+          return res.json({ fixed: true, description: fix.description });
+        } catch (retryErr) {
+          return res.json({ fixed: false, description: "설정을 고쳤지만 시작에 실패했습니다." });
+        }
+      }
+    }
+
+    res.json({ fixed: false, description: fix?.description ?? "자동으로 고칠 수 있는 문제를 찾지 못했습니다." });
   });
 
   // SPA fallback
