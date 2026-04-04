@@ -1173,6 +1173,17 @@ function renderWorkspace(data) {
   statusEl.textContent = camp.status;
   statusEl.className = `workspace-status badge badge-${camp.status}`;
 
+  // Mini character in topbar
+  const miniChar = document.getElementById('ws-mini-char');
+  if (miniChar) {
+    miniChar.className = 'ws-mini-char';
+    const charState = camp.status === 'running' ? 'running'
+      : camp.status === 'error' ? 'error'
+      : camp.status === 'starting' || camp.status === 'starting-frontend' ? 'starting'
+      : 'stopped';
+    miniChar.classList.add(`ws-mini-char-${charState}`);
+  }
+
   // Changes — unsaved indicator + save button
   const changesEl = document.getElementById('ws-changes');
   const summaryTextEl = document.getElementById('ws-changes-summary-text');
