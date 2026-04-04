@@ -207,10 +207,9 @@ JSON으로만 응답해 (다른 텍스트 없이):
 categories의 키는 반드시 다음 중 하나: ${Object.keys(report.byCategory).join(", ")}`;
 
   try {
-    const result = spawnSync("claude", ["-p", "--model", "claude-haiku-4-5", "--output-format", "text"], {
-      input: prompt,
+    const result = spawnSync("claude", ["-p", prompt], {
       encoding: "utf8",
-      timeout: 15_000,
+      timeout: 30_000,
     });
 
     if (result.status === 0 && result.stdout) {
