@@ -2081,9 +2081,12 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       return res.json(mainState);
     }
     try {
-      await startMainServer(projectRoot, config, (port) => {
-        broadcast({ type: "compare-ready", data: { port } });
-      });
+      await startMainServer(
+        projectRoot,
+        config,
+        (port) => { broadcast({ type: "compare-ready", data: { port } }); },
+        (msg) => { broadcast({ type: "log", name: "__main__", source: "sanjang", data: msg }); },
+      );
       res.json(getMainServerState());
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
