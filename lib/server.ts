@@ -570,39 +570,15 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       (proxyRes: IncomingMessage) => {
         const contentType = proxyRes.headers["content-type"] || "";
         const isHtml = contentType.includes("text/html");
-        const isJs = contentType.includes("javascript") || contentType.includes("ecmascript");
 
-        if (!isHtml && !isJs) {
-          // Pass through non-text responses directly
+        if (!isHtml) {
+          // Pass through non-HTML responses directly (JS, CSS, images, etc.)
           res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
           proxyRes.pipe(res);
           return;
         }
 
-        if (isJs) {
-          // Rewrite absolute imports in JS modules
-          const jsChunks: Buffer[] = [];
-          proxyRes.on("data", (chunk: Buffer) => jsChunks.push(chunk));
-          proxyRes.on("end", () => {
-            let jsBody = Buffer.concat(jsChunks).toString("utf8");
-            const pfx = `/preview/${targetPort}`;
-            jsBody = jsBody.replace(/(from\s+["'])\/(?!\/)/g, `$1${pfx}/`);
-            jsBody = jsBody.replace(/(import\s*\(\s*["'])\/(?!\/)/g, `$1${pfx}/`);
-            // Static side-effect imports: import "/src/index.css"
-            jsBody = jsBody.replace(/(import\s+["'])\/(?!\/)/g, `$1${pfx}/`);
-            // Rewrite Vite's base variable so HMR dynamic imports use the proxy path
-            jsBody = jsBody.replace(/base\s*=\s*"\/"\s*\|\|\s*"\/"/g, `base = "${pfx}/" || "${pfx}/"`);
-            const jsHeaders = { ...proxyRes.headers };
-            delete jsHeaders["content-length"];
-            delete jsHeaders["content-encoding"];
-            delete jsHeaders["transfer-encoding"];
-            res.writeHead(proxyRes.statusCode ?? 200, jsHeaders);
-            res.end(jsBody);
-          });
-          return;
-        }
-
-        // Buffer HTML to inject script
+        // Buffer HTML to inject sanjang monitoring script (no path rewriting needed)
         const chunks: Buffer[] = [];
         proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
         proxyRes.on("end", () => {
@@ -614,13 +590,6 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             "new URLSearchParams(location.search.slice(1)||'').get('_sp')||location.port",
             `'${port}'`,
           );
-          // Rewrite absolute paths so they route through the proxy.
-          // Covers: src="/...", from "/...", import("/..."), href="/..."
-          const prefix = `/preview/${targetPort}`;
-          body = body.replace(/((?:src|href)=["'])\/(?!\/)/g, `$1${prefix}/`);
-          body = body.replace(/(from\s+["'])\/(?!\/)/g, `$1${prefix}/`);
-          body = body.replace(/(import\s*\(\s*["'])\/(?!\/)/g, `$1${prefix}/`);
-          body = body.replace(/(import\s+["'])\/(?!\/)/g, `$1${prefix}/`);
 
           // Inject before </head> or </body> or at end
           if (body.includes("</head>")) {
@@ -2159,6 +2128,51 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     const data: ActivityData = { daily, mergedPrs, streak };
     activityCache = { data, ts: Date.now() };
     res.json(data);
+  });
+
+  // Vite resource proxy — when iframe loads /@vite/client, /src/*, /node_modules/*
+  // these hit the sanjang origin instead of the camp's Vite server.
+  // Detect target port from Referer or fall back to the single running camp.
+  app.use((req: Request, res: Response, next) => {
+    const url = req.url;
+    // Only intercept Vite-like paths that aren't dashboard routes
+    if (!url.startsWith("/@") && !url.startsWith("/src/") && !url.startsWith("/node_modules/")) {
+      return next();
+    }
+
+    // Try Referer first: /preview/3001/...
+    const referer = req.headers.referer || "";
+    const refMatch = /\/preview\/(\d+)/.exec(referer);
+    const camps = getAll();
+    const runningCamps = camps.filter((c) => c.status === "running");
+
+    let campPort: number | null = null;
+    if (refMatch) {
+      const port = parseInt(refMatch[1]!, 10);
+      if (camps.some((c) => c.fePort === port)) campPort = port;
+    }
+    // Fall back: if only one running camp, use it
+    if (!campPort && runningCamps.length === 1) {
+      campPort = runningCamps[0]!.fePort;
+    }
+    if (!campPort) return next();
+
+    // Proxy to the camp's Vite server
+    const proxyReq = httpRequest(
+      {
+        hostname: "localhost",
+        port: campPort,
+        path: url,
+        method: req.method,
+        headers: { ...req.headers, host: `localhost:${campPort}` },
+      },
+      (proxyRes: IncomingMessage) => {
+        res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+        proxyRes.pipe(res);
+      },
+    );
+    proxyReq.on("error", () => next());
+    req.pipe(proxyReq);
   });
 
   // SPA fallback
