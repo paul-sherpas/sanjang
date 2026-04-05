@@ -424,7 +424,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
       // Proxy WS to the target dev server
       const targetPath = hmrMatch[2] || "/";
-      const proxy = netConnect({ host: "127.0.0.1", port: targetPort }, () => {
+      const proxy = netConnect({ host: "localhost", port: targetPort }, () => {
         // Rewrite the request line to target path and forward the upgrade
         const reqLine = `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n`;
         const headers = Object.entries(req.headers)
@@ -561,7 +561,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     const targetPath = req.url || "/";
     const proxyReq = httpRequest(
       {
-        hostname: "127.0.0.1",
+        hostname: "localhost",
         port: targetPort,
         path: targetPath,
         method: req.method,
