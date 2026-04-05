@@ -614,13 +614,20 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             `'${port}'`,
           );
 
+          // Inject <base> pointing to the direct dev server so all subsequent
+          // resource requests (JS, CSS, images) bypass the proxy entirely.
+          // This eliminates Referer-based routing issues with multi-camp setups.
+          const baseTag = `<base href="http://localhost:${targetPort}/">`;
+
           // Inject before </head> or </body> or at end
-          if (body.includes("</head>")) {
-            body = body.replace("</head>", `${finalScript}</head>`);
+          if (body.includes("<head>")) {
+            body = body.replace("<head>", `<head>${baseTag}`).replace("</head>", `${finalScript}</head>`);
+          } else if (body.includes("</head>")) {
+            body = body.replace("</head>", `${baseTag}${finalScript}</head>`);
           } else if (body.includes("</body>")) {
-            body = body.replace("</body>", `${finalScript}</body>`);
+            body = body.replace("</body>", `${baseTag}${finalScript}</body>`);
           } else {
-            body += finalScript;
+            body += baseTag + finalScript;
           }
           // Remove content-length (body size changed) and content-encoding (we decoded it)
           const headers = { ...proxyRes.headers };
