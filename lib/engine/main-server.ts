@@ -37,13 +37,11 @@ export async function startMainServer(
 
   const basePort = config.dev.port + 100;
 
-  const cmdParts = config.dev.command.split(/\s+/);
-  const cmd = cmdParts[0]!;
-  const args = cmdParts.slice(1);
-
-  if (config.dev.portFlag) {
-    args.push(config.dev.portFlag, String(basePort));
-  }
+  // npm/yarn/pnpm run require "--" before flags to forward them to the script
+  const needsSeparator = config.dev.portFlag && /\b(npm|yarn|pnpm)\s+run\b/.test(config.dev.command);
+  const fullCommand = config.dev.portFlag
+    ? `${config.dev.command}${needsSeparator ? " --" : ""} ${config.dev.portFlag} ${basePort}`
+    : config.dev.command;
 
   const cwd = config.dev.cwd
     ? config.dev.cwd.startsWith("/")
@@ -51,11 +49,12 @@ export async function startMainServer(
       : `${projectRoot}/${config.dev.cwd}`
     : projectRoot;
 
-  proc = spawn(cmd, args, {
+  proc = spawn(fullCommand, [], {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ...config.dev.env, FORCE_COLOR: "0" },
+    env: { ...process.env, ...config.dev.env, FORCE_COLOR: "0", NO_COLOR: "1" },
     shell: true,
+    detached: true,
   });
 
   proc.stdout?.on("data", (chunk: Buffer) => {
@@ -82,19 +81,31 @@ export async function startMainServer(
     proc = null;
   });
 
-  const detectedPort = await detectMainPort(logs, basePort, 15_000);
+  const detectedPort = await detectMainPort(logs, basePort, 30_000);
   if (detectedPort) {
     state = { status: "running", port: detectedPort, error: null };
     onReady?.(detectedPort);
   } else {
-    state = { status: "error", port: null, error: "포트를 감지하지 못했어요" };
+    // Cleanup on failure
+    if (proc) {
+      const pid = proc.pid;
+      if (pid) { try { process.kill(-pid, "SIGTERM"); } catch {} }
+      proc = null;
+    }
+    const lastLog = logs.slice(-5).join("\n").trim();
+    state = { status: "error", port: null, error: lastLog || "포트를 감지하지 못했어요" };
   }
 }
 
 export function stopMainServer(): void {
   state = { status: "stopped", port: null, error: null };
   if (proc) {
-    proc.kill("SIGTERM");
+    const pid = proc.pid;
+    if (pid) {
+      try { process.kill(-pid, "SIGTERM"); } catch { proc.kill("SIGTERM"); }
+    } else {
+      proc.kill("SIGTERM");
+    }
     proc = null;
   }
   logs = [];
@@ -103,11 +114,13 @@ export function stopMainServer(): void {
 function detectMainPort(logLines: string[], _fallbackPort: number, timeoutMs: number): Promise<number | null> {
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
+    // Strip ANSI codes before matching — Vite injects bold/color around the port number
+    const ansiRe = /\x1b\[[0-9;]*m/g;
     const portRe = /https?:\/\/localhost:(\d+)/;
 
     function check(): void {
       for (const line of logLines) {
-        const match = portRe.exec(line);
+        const match = portRe.exec(line.replace(ansiRe, ""));
         if (match?.[1]) {
           const port = parseInt(match[1], 10);
           const sock = createConnection({ port, host: "localhost" });
