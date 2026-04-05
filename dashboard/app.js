@@ -338,6 +338,20 @@ function handleWsMessage(msg) {
       break;
     }
 
+    case 'browser-console': {
+      if (!name || !data) break;
+      if (currentWorkspace !== name) break;
+      addBrowserConsole(data);
+      break;
+    }
+
+    case 'browser-network': {
+      if (!name || !data) break;
+      if (currentWorkspace !== name) break;
+      addNetworkRequest(data);
+      break;
+    }
+
     case 'file-changes': {
       if (!name || !data) break;
       if (currentWorkspace !== name) break;
@@ -1917,6 +1931,93 @@ function clearBrowserErrors() {
   browserErrors.length = 0;
   renderBrowserErrors();
 }
+
+// ---------------------------------------------------------------------------
+// Console Panel
+// ---------------------------------------------------------------------------
+
+/** @type {Array<{level: string, message: string, ts: number}>} */
+const browserConsole = [];
+
+function addBrowserConsole(data) {
+  browserConsole.push({ ...data, ts: Date.now() });
+  if (browserConsole.length > 200) browserConsole.splice(0, browserConsole.length - 200);
+  renderBrowserConsole();
+}
+
+function renderBrowserConsole() {
+  const panel = document.getElementById('ws-console-panel');
+  if (!panel) return;
+  const badge = document.getElementById('ws-console-badge');
+  if (browserConsole.length === 0) {
+    panel.innerHTML = '<span style="color:var(--text-muted);font-size:12px">로그 없음</span>';
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  if (badge) { badge.style.display = ''; badge.textContent = browserConsole.length; }
+  panel.innerHTML = browserConsole.slice(-50).reverse().map(e => {
+    const cls = e.level === 'warn' ? 'ws-console-warn' : e.level === 'info' ? 'ws-console-info' : 'ws-console-log';
+    return `<div class="ws-console-item ${cls}">${escHtml(e.message)}</div>`;
+  }).join('');
+}
+
+function clearBrowserConsole() {
+  browserConsole.length = 0;
+  renderBrowserConsole();
+}
+
+// ---------------------------------------------------------------------------
+// Network Panel
+// ---------------------------------------------------------------------------
+
+/** @type {Array<{url: string, method: string, status: number, duration: number, error?: string, ts: number}>} */
+const networkRequests = [];
+
+function addNetworkRequest(data) {
+  networkRequests.push({ ...data, ts: Date.now() });
+  if (networkRequests.length > 100) networkRequests.shift();
+  renderNetworkRequests();
+}
+
+function renderNetworkRequests() {
+  const panel = document.getElementById('ws-network-panel');
+  if (!panel) return;
+  const badge = document.getElementById('ws-network-badge');
+  if (networkRequests.length === 0) {
+    panel.innerHTML = '<span style="color:var(--text-muted);font-size:12px">요청 없음</span>';
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  const failed = networkRequests.filter(r => r.status >= 400 || r.status === 0).length;
+  if (badge) {
+    badge.style.display = failed > 0 ? '' : 'none';
+    badge.textContent = failed;
+  }
+  panel.innerHTML = networkRequests.slice(-30).reverse().map(r => {
+    const statusCls = r.status === 0 ? 'ws-net-err' : r.status >= 400 ? 'ws-net-err' : r.status >= 300 ? 'ws-net-warn' : 'ws-net-ok';
+    const urlShort = r.url.length > 60 ? '...' + r.url.slice(-57) : r.url;
+    return `<div class="ws-net-item">
+      <span class="ws-net-method ws-net-method-${r.method.toLowerCase()}">${escHtml(r.method)}</span>
+      <span class="ws-net-url" title="${escHtml(r.url)}">${escHtml(urlShort)}</span>
+      <span class="ws-net-status ${statusCls}">${r.status || 'ERR'}</span>
+      <span class="ws-net-dur">${r.duration}ms</span>
+    </div>`;
+  }).join('');
+}
+
+function clearNetworkRequests() {
+  networkRequests.length = 0;
+  renderNetworkRequests();
+}
+
+// Tab switching for devtools panel
+window.switchDevTab = function switchDevTab(tab) {
+  document.querySelectorAll('.ws-devtab-btn').forEach(b => b.classList.remove('ws-devtab-active'));
+  document.querySelectorAll('.ws-devtab-panel').forEach(p => p.style.display = 'none');
+  document.querySelector(`.ws-devtab-btn[data-tab="${tab}"]`)?.classList.add('ws-devtab-active');
+  const panel = document.getElementById(`ws-devtab-${tab}`);
+  if (panel) panel.style.display = '';
+};
 
 window.wsShip = async function() {
   if (!currentWorkspace) return;

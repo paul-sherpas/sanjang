@@ -131,16 +131,33 @@
           <h3>📜 세이브 기록</h3>
           <div id="ws-actions"></div>
         </div>
-        <details class="workspace-section ws-log-details">
-          <summary>🔴 브라우저 에러 <span class="ws-error-badge" id="ws-browser-error-badge" style="display:none">0</span></summary>
-          <div class="ws-browser-error-panel" id="ws-browser-errors">
-            <span style="color:var(--text-muted);font-size:12px">에러 없음</span>
+        <details class="workspace-section ws-log-details" open>
+          <summary>🛠 개발자 도구</summary>
+          <div class="ws-devtabs">
+            <button class="ws-devtab-btn ws-devtab-active" data-tab="errors" onclick="switchDevTab('errors')">🔴 에러 <span class="ws-error-badge" id="ws-browser-error-badge" style="display:none">0</span></button>
+            <button class="ws-devtab-btn" data-tab="console" onclick="switchDevTab('console')">콘솔 <span class="ws-devtab-badge" id="ws-console-badge" style="display:none">0</span></button>
+            <button class="ws-devtab-btn" data-tab="network" onclick="switchDevTab('network')">네트워크 <span class="ws-devtab-badge" id="ws-network-badge" style="display:none">0</span></button>
+            <button class="ws-devtab-btn" data-tab="log" onclick="switchDevTab('log')">📜 로그</button>
           </div>
-          <button class="btn btn-fix" id="ws-fix-btn" onclick="copyFixPrompt()" style="display:none">🩹 고쳐줘 — 클립보드 복사</button>
-        </details>
-        <details class="workspace-section ws-log-details">
-          <summary>📜 로그</summary>
-          <div class="ws-log-panel" id="ws-log"><pre></pre></div>
+          <div class="ws-devtab-panel" id="ws-devtab-errors">
+            <div class="ws-browser-error-panel" id="ws-browser-errors">
+              <span style="color:var(--text-muted);font-size:12px">에러 없음</span>
+            </div>
+            <button class="btn btn-fix" id="ws-fix-btn" onclick="copyFixPrompt()" style="display:none">🩹 고쳐줘 — 클립보드 복사</button>
+          </div>
+          <div class="ws-devtab-panel" id="ws-devtab-console" style="display:none">
+            <div class="ws-console-panel" id="ws-console-panel">
+              <span style="color:var(--text-muted);font-size:12px">로그 없음</span>
+            </div>
+          </div>
+          <div class="ws-devtab-panel" id="ws-devtab-network" style="display:none">
+            <div class="ws-network-panel" id="ws-network-panel">
+              <span style="color:var(--text-muted);font-size:12px">요청 없음</span>
+            </div>
+          </div>
+          <div class="ws-devtab-panel" id="ws-devtab-log" style="display:none">
+            <div class="ws-log-panel" id="ws-log"><pre></pre></div>
+          </div>
         </details>
       </div>
       <div class="ws-panel-actions">

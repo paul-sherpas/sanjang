@@ -419,8 +419,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     ws.on("message", (raw: Buffer) => {
       try {
         const msg = JSON.parse(raw.toString());
-        if (msg.type === "browser-error" && msg.name) {
-          broadcast({ type: "browser-error", name: msg.name, data: msg.data });
+        if ((msg.type === "browser-error" || msg.type === "browser-console" || msg.type === "browser-network") && msg.name) {
+          broadcast({ type: msg.type, name: msg.name, data: msg.data });
         }
       } catch {
         /* ignore non-JSON */
@@ -443,18 +443,61 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     ws.onclose=function(){setTimeout(connect,3000)};
   }
   var name=document.currentScript.getAttribute('data-camp');
+  function fmt(a){try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(e){return String(a)}}
+  function fmtArgs(a){return [].slice.call(a).map(fmt).join(' ')}
+
+  // --- Error capture ---
   window.addEventListener('error',function(e){
     send({type:'browser-error',name:name,data:{level:'error',message:e.message,source:e.filename,line:e.lineno,col:e.colno}});
   });
   var origError=console.error;
   console.error=function(){
-    var args=[].slice.call(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(e){return String(a)}});
-    send({type:'browser-error',name:name,data:{level:'console.error',message:args.join(' ')}});
+    send({type:'browser-error',name:name,data:{level:'console.error',message:fmtArgs(arguments)}});
     origError.apply(console,arguments);
   };
   window.addEventListener('unhandledrejection',function(e){
     send({type:'browser-error',name:name,data:{level:'promise',message:String(e.reason)}});
   });
+
+  // --- Console capture (log/warn/info) ---
+  var origLog=console.log,origWarn=console.warn,origInfo=console.info;
+  console.log=function(){
+    send({type:'browser-console',name:name,data:{level:'log',message:fmtArgs(arguments)}});
+    origLog.apply(console,arguments);
+  };
+  console.warn=function(){
+    send({type:'browser-console',name:name,data:{level:'warn',message:fmtArgs(arguments)}});
+    origWarn.apply(console,arguments);
+  };
+  console.info=function(){
+    send({type:'browser-console',name:name,data:{level:'info',message:fmtArgs(arguments)}});
+    origInfo.apply(console,arguments);
+  };
+
+  // --- Network capture (fetch + XHR) ---
+  var origFetch=window.fetch;
+  if(origFetch)window.fetch=function(url,opts){
+    var method=(opts&&opts.method||'GET').toUpperCase();
+    var start=Date.now();
+    var urlStr=typeof url==='string'?url:(url&&url.url?url.url:String(url));
+    return origFetch.apply(this,arguments).then(function(resp){
+      send({type:'browser-network',name:name,data:{url:urlStr,method:method,status:resp.status,duration:Date.now()-start}});
+      return resp;
+    }).catch(function(err){
+      send({type:'browser-network',name:name,data:{url:urlStr,method:method,status:0,duration:Date.now()-start,error:String(err)}});
+      throw err;
+    });
+  };
+  var origXHROpen=XMLHttpRequest.prototype.open,origXHRSend=XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open=function(m,u){this._sj={method:m,url:u};origXHROpen.apply(this,arguments)};
+  XMLHttpRequest.prototype.send=function(){
+    var self=this,info=self._sj||{};info.start=Date.now();
+    self.addEventListener('loadend',function(){
+      send({type:'browser-network',name:name,data:{url:info.url||'',method:(info.method||'GET').toUpperCase(),status:self.status,duration:Date.now()-info.start}});
+    });
+    origXHRSend.apply(this,arguments);
+  };
+
   connect();
 })();
 </script>`;
@@ -639,7 +682,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
 
     (async () => {
       try {
-        const detectedPort = await startCamp(pg, (event) => {
+        const reservedPorts = new Set(getAll().filter((c) => c.name !== name).map((c) => c.fePort));
+        const detectedPort = await startCamp({ ...pg, reservedPorts }, (event) => {
           broadcast({ type: event.type, name, data: event.data, source: event.source });
         });
         const url = `http://localhost:${detectedPort}`;
@@ -674,7 +718,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             broadcast({ type: "playground-status", name, data: { status: "starting" } });
 
             try {
-              const retryPort = await startCamp(current, (event) => {
+              const retryReserved = new Set(getAll().filter((c) => c.name !== name).map((c) => c.fePort));
+              const retryPort = await startCamp({ ...current, reservedPorts: retryReserved }, (event) => {
                 broadcast({ type: event.type, name, data: event.data, source: event.source });
               });
               const retryUrl = `http://localhost:${retryPort}`;
@@ -1764,7 +1809,8 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           stopWatcher(name);
           updateCampStatus(name, "starting");
           broadcast({ type: "playground-status", name, data: { status: "starting" } });
-          const detectedPort = await startCamp(pg, (event) => {
+          const fixReserved = new Set(getAll().filter((c) => c.name !== name).map((c) => c.fePort));
+          const detectedPort = await startCamp({ ...pg, reservedPorts: fixReserved }, (event) => {
             broadcast({ type: event.type, name, data: event.data, source: event.source });
           });
           const url = `http://localhost:${detectedPort}`;

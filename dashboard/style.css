@@ -1107,14 +1107,58 @@ header h1::before {
 .btn-fix:hover { opacity: 0.9; transform: translateY(-1px); }
 .btn-fix:active { transform: translateY(0); }
 
-.ws-error-badge {
+.ws-error-badge, .ws-devtab-badge {
   background: #ef4444;
   color: white;
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
-  margin-left: 6px;
+  margin-left: 4px;
 }
+
+/* Devtools tabs */
+.ws-devtabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
+.ws-devtab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ws-devtab-btn:hover { color: var(--text); }
+.ws-devtab-btn.ws-devtab-active { color: var(--text); border-bottom-color: var(--accent); }
+.ws-devtab-panel { max-height: 300px; overflow-y: auto; }
+
+/* Console panel */
+.ws-console-panel { padding: 4px 8px; font-size: 11px; font-family: var(--font-mono); }
+.ws-console-item { padding: 2px 0; border-bottom: 1px solid var(--border-subtle); word-break: break-all; }
+.ws-console-log { color: var(--text); }
+.ws-console-warn { color: #f59e0b; }
+.ws-console-info { color: #3b82f6; }
+
+/* Network panel */
+.ws-network-panel { padding: 4px 8px; font-size: 11px; font-family: var(--font-mono); }
+.ws-net-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--border-subtle); }
+.ws-net-method { font-weight: 600; font-size: 10px; padding: 1px 4px; border-radius: 3px; flex-shrink: 0; }
+.ws-net-method-get { color: #22c55e; }
+.ws-net-method-post { color: #3b82f6; }
+.ws-net-method-put { color: #f59e0b; }
+.ws-net-method-delete { color: #ef4444; }
+.ws-net-method-patch { color: #a855f7; }
+.ws-net-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.ws-net-status { font-weight: 600; flex-shrink: 0; }
+.ws-net-ok { color: #22c55e; }
+.ws-net-warn { color: #f59e0b; }
+.ws-net-err { color: #ef4444; }
+.ws-net-dur { color: var(--text-muted); flex-shrink: 0; }
 
 .ws-file-item {
   display: flex;
