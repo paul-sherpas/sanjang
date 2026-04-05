@@ -358,14 +358,19 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       const camps = getAll();
       for (const camp of camps) {
         if (camp.status !== "running" || !camp.fePort) continue;
+
+        // Check 1: Is the Vite dev server alive? (direct)
+        let directOk = false;
         try {
           const res = await fetch(`http://localhost:${camp.fePort}/`, {
             signal: AbortSignal.timeout(3000),
           });
-          // Any response (even 4xx) means the server is alive
-          if (!res.ok && res.status >= 500) throw new Error(`HTTP ${res.status}`);
+          directOk = res.status < 500;
         } catch {
-          // Port is dead — update state and notify dashboard
+          directOk = false;
+        }
+
+        if (!directOk) {
           upsert({ ...camp, status: "stopped" });
           broadcast({
             type: "playground-status",
@@ -379,6 +384,24 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             data: `⚠️ 헬스체크 실패: :${camp.fePort} 응답 없음 → stopped 처리`,
           });
           stopWatcher(camp.name);
+          continue;
+        }
+
+        // Check 2: Is the proxy path working? (through sanjang)
+        try {
+          const proxyRes = await fetch(`http://localhost:${port}/preview/${camp.fePort}/`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (proxyRes.status === 502) {
+            broadcast({
+              type: "log",
+              name: camp.name,
+              source: "sanjang",
+              data: `⚠️ 프록시 헬스체크: :${camp.fePort} 직접 접속은 되지만 프록시(502) 실패`,
+            });
+          }
+        } catch {
+          // Proxy check failure is non-fatal — just log
         }
       }
     }, HEALTH_CHECK_INTERVAL);
@@ -726,8 +749,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
         const detectedPort = await startCamp({ ...pg, reservedPorts }, (event) => {
           broadcast({ type: event.type, name, data: event.data, source: event.source });
         });
+        // Guard: camp may have been deleted while starting
+        if (!getOne(name)) { stopCamp(name); startingSet.delete(name); return; }
         const url = `http://localhost:${detectedPort}`;
-        const updatedCamp = { ...getOne(name)!, status: "running" as const, fePort: detectedPort, url };
+        const updatedCamp = { ...(getOne(name) ?? pg), status: "running" as const, fePort: detectedPort, url };
         upsert(updatedCamp);
         broadcast({ type: "playground-status", name, data: { status: "running", url } });
         startWatcher(name);
@@ -763,7 +788,9 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
                 broadcast({ type: event.type, name, data: event.data, source: event.source });
               });
               const retryUrl = `http://localhost:${retryPort}`;
-              upsert({ ...getOne(name)!, status: "running", fePort: retryPort, url: retryUrl });
+              const retryState = getOne(name);
+              if (!retryState) { stopCamp(name); return; }
+              upsert({ ...retryState, status: "running", fePort: retryPort, url: retryUrl });
               broadcast({ type: "playground-status", name, data: { status: "running", url: retryUrl } });
               startWatcher(name);
               broadcast({ type: "log", name, source: "sanjang", data: "자동 복구 성공 ✓" });
@@ -2130,17 +2157,18 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json(data);
   });
 
-  // Vite resource proxy — when iframe loads /@vite/client, /src/*, /node_modules/*
-  // these hit the sanjang origin instead of the camp's Vite server.
-  // Detect target port from Referer or fall back to the single running camp.
+  // Vite resource proxy — catch-all for non-dashboard paths.
+  // Instead of whitelisting Vite prefixes (/@, /src/, /node_modules/, /@fs/, /.vite/, ...),
+  // we blacklist known dashboard routes and proxy everything else to a running camp.
   app.use((req: Request, res: Response, next) => {
     const url = req.url;
-    // Only intercept Vite-like paths that aren't dashboard routes
-    if (!url.startsWith("/@") && !url.startsWith("/src/") && !url.startsWith("/node_modules/")) {
+    // Dashboard routes — let them through to SPA fallback
+    if (url === "/" || url.startsWith("/api/") || url.startsWith("/preview/")) {
       return next();
     }
+    // Dashboard static files are already handled by express.static above
 
-    // Try Referer first: /preview/3001/...
+    // Determine target camp port
     const referer = req.headers.referer || "";
     const refMatch = /\/preview\/(\d+)/.exec(referer);
     const camps = getAll();
@@ -2175,7 +2203,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     req.pipe(proxyReq);
   });
 
-  // SPA fallback
+  // SPA fallback — only for dashboard routes that passed through above
   app.get("*", (_req: Request, res: Response) => {
     res.sendFile(join(dashboardDir, "index.html"));
   });
