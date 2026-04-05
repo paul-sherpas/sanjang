@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { createServer } from "node:net";
 import type { Camp, PortAllocation, PortStatus, PortsConfig } from "../types.ts";
 
 const portConfig: PortsConfig = {
@@ -18,34 +18,43 @@ export function portsForSlot(slot: number): { fePort: number; bePort: number } {
   };
 }
 
-function isPortBusy(port: number): boolean {
-  try {
-    const out = execSync(`lsof -i :${port} -t 2>/dev/null`, { encoding: "utf8" }).trim();
-    return out.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-export function scanPorts(): PortStatus[] {
-  const status: PortStatus[] = [];
-  const maxSlots = Math.max(portConfig.fe.slots, portConfig.be.slots);
-  for (let slot = 0; slot < maxSlots; slot++) {
-    const { fePort, bePort } = portsForSlot(slot);
-    status.push({
-      slot,
-      fePort,
-      feBusy: isPortBusy(fePort),
-      bePort,
-      beBusy: isPortBusy(bePort),
+function probePort(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once("error", () => resolve(true));
+    srv.once("listening", () => {
+      srv.close(() => resolve(false));
     });
-  }
-  return status;
+    srv.listen(port, "127.0.0.1");
+  });
 }
 
-export function allocate(existingCamps: Pick<Camp, "slot" | "fePort" | "bePort">[]): PortAllocation {
+// --- 10-second cache ---
+let _cache: PortStatus[] | null = null;
+let _cacheTime = 0;
+const CACHE_TTL = 10_000;
+
+export async function scanPorts(): Promise<PortStatus[]> {
+  const now = Date.now();
+  if (_cache && now - _cacheTime < CACHE_TTL) return _cache;
+
+  const maxSlots = Math.max(portConfig.fe.slots, portConfig.be.slots);
+  const slots = Array.from({ length: maxSlots }, (_, i) => i);
+  const results = await Promise.all(
+    slots.map(async (slot) => {
+      const { fePort, bePort } = portsForSlot(slot);
+      const [feBusy, beBusy] = await Promise.all([probePort(fePort), probePort(bePort)]);
+      return { slot, fePort, feBusy, bePort, beBusy };
+    }),
+  );
+
+  _cache = results;
+  _cacheTime = Date.now();
+  return results;
+}
+
+export async function allocate(existingCamps: Pick<Camp, "slot" | "fePort" | "bePort">[]): Promise<PortAllocation> {
   const usedSlots = new Set(existingCamps.map((p) => p.slot));
-  // Also avoid ports that other camps are actually using (may differ from slot-derived ports)
   const usedFePorts = new Set(existingCamps.map((p) => p.fePort));
   const usedBePorts = new Set(existingCamps.map((p) => p.bePort));
   const maxSlots = portConfig.fe.slots;
@@ -54,7 +63,8 @@ export function allocate(existingCamps: Pick<Camp, "slot" | "fePort" | "bePort">
     if (usedSlots.has(slot)) continue;
     const { fePort, bePort } = portsForSlot(slot);
     if (usedFePorts.has(fePort) || usedBePorts.has(bePort)) continue;
-    if (!isPortBusy(fePort) && !isPortBusy(bePort)) {
+    const [feBusy, beBusy] = await Promise.all([probePort(fePort), probePort(bePort)]);
+    if (!feBusy && !beBusy) {
       return { slot, fePort, bePort };
     }
   }

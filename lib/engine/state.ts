@@ -21,13 +21,22 @@ function ensureDir(): void {
   mkdirSync(getCampsDir(), { recursive: true });
 }
 
+// --- In-memory cache ---
+let _stateCache: Camp[] | null = null;
+
 function read(): Camp[] {
+  if (_stateCache !== null) return _stateCache;
   const f = stateFile();
-  if (!existsSync(f)) return [];
+  if (!existsSync(f)) {
+    _stateCache = [];
+    return _stateCache;
+  }
   try {
-    return JSON.parse(readFileSync(f, "utf8"));
+    _stateCache = JSON.parse(readFileSync(f, "utf8"));
+    return _stateCache!;
   } catch {
-    return [];
+    _stateCache = [];
+    return _stateCache;
   }
 }
 
@@ -37,6 +46,7 @@ function write(records: Camp[]): void {
   const tmp = `${stateFile()}.tmp`;
   writeFileSync(tmp, JSON.stringify(records, null, 2), "utf8");
   renameSync(tmp, stateFile());
+  _stateCache = records;
 }
 
 export function getAll(): Camp[] {
