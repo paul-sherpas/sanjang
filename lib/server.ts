@@ -590,13 +590,18 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             "new URLSearchParams(location.search.slice(1)||'').get('_sp')||location.port",
             `'${port}'`,
           );
+          // Inject <base> so Vite's absolute paths (/@vite/client, /src/main.tsx)
+          // resolve through the proxy instead of hitting the sanjang SPA fallback
+          const baseTag = `<base href="/preview/${targetPort}/">`;
+
           // Inject before </head> or </body> or at end
           if (body.includes("</head>")) {
-            body = body.replace("</head>", `${finalScript}</head>`);
+            // <base> must come before any resource references, so inject at start of <head>
+            body = body.replace("<head>", `<head>${baseTag}`).replace("</head>", `${finalScript}</head>`);
           } else if (body.includes("</body>")) {
-            body = body.replace("</body>", `${finalScript}</body>`);
+            body = body.replace("</body>", `${baseTag}${finalScript}</body>`);
           } else {
-            body += finalScript;
+            body += baseTag + finalScript;
           }
           // Remove content-length (body size changed) and content-encoding (we decoded it)
           const headers = { ...proxyRes.headers };
