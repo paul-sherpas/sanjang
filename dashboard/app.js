@@ -1286,6 +1286,7 @@ window.shipPg = async function shipPg() {
 // ---------------------------------------------------------------------------
 
 let conflictCampName = null;
+let conflictDetails = [];
 
 window.syncPg = async function syncPg(name) {
   if (!confirm('팀의 최신 변경사항을 가져올까요?')) return;
@@ -1293,13 +1294,46 @@ window.syncPg = async function syncPg(name) {
     const result = await api('POST', `/api/playgrounds/${name}/sync`);
     if (result.conflict) {
       conflictCampName = name;
+      conflictDetails = result.conflictDetails || [];
       const fileList = document.getElementById('conflict-files');
-      if (result.conflictFiles?.length) {
-        fileList.innerHTML = `<div style="font-size:12px;background:var(--bg-card);padding:8px;border-radius:4px">
-          충돌 파일: ${result.conflictFiles.map(f => `<code>${escHtml(f)}</code>`).join(', ')}
-        </div>`;
-      } else {
-        fileList.innerHTML = '';
+      if (conflictDetails.length > 0) {
+        fileList.innerHTML = conflictDetails.map(f => {
+          const sectionsHtml = f.sections.length > 0
+            ? f.sections.map((s, i) => `
+              <div class="conflict-section">
+                <div class="conflict-side conflict-ours">
+                  <div class="conflict-side-label">내 것</div>
+                  <pre>${escHtml(s.ours)}</pre>
+                </div>
+                <div class="conflict-side conflict-theirs">
+                  <div class="conflict-side-label">팀 것</div>
+                  <pre>${escHtml(s.theirs)}</pre>
+                </div>
+              </div>`).join('')
+            : '<div style="color:var(--text-muted);font-size:12px;padding:4px 0">충돌 내용을 파싱할 수 없습니다</div>';
+          return `<div class="conflict-file">
+            <div class="conflict-file-header">
+              <code>${escHtml(f.path)}</code>
+              <div class="conflict-file-actions">
+                <button class="btn btn-ghost btn-sm" onclick="resolveFile('${escHtml(f.path)}','ours')">내 것</button>
+                <button class="btn btn-ghost btn-sm" onclick="resolveFile('${escHtml(f.path)}','theirs')">팀 것</button>
+              </div>
+            </div>
+            ${sectionsHtml}
+          </div>`;
+        }).join('');
+      } else if (result.conflictFiles?.length) {
+        fileList.innerHTML = result.conflictFiles.map(f =>
+          `<div class="conflict-file">
+            <div class="conflict-file-header">
+              <code>${escHtml(f)}</code>
+              <div class="conflict-file-actions">
+                <button class="btn btn-ghost btn-sm" onclick="resolveFile('${escHtml(f)}','ours')">내 것</button>
+                <button class="btn btn-ghost btn-sm" onclick="resolveFile('${escHtml(f)}','theirs')">팀 것</button>
+              </div>
+            </div>
+          </div>`
+        ).join('');
       }
       document.getElementById('conflict-modal').classList.add('open');
     } else {
@@ -1307,6 +1341,30 @@ window.syncPg = async function syncPg(name) {
     }
   } catch (err) {
     toast(`최신 반영 실패: ${err.message}`, 'error');
+  }
+};
+
+window.resolveFile = async function resolveFile(filePath, strategy) {
+  if (!conflictCampName) return;
+  try {
+    const result = await api('POST', `/api/playgrounds/${conflictCampName}/resolve-file`, { path: filePath, strategy });
+    // Remove resolved file from UI
+    const fileEls = document.querySelectorAll('#conflict-files .conflict-file');
+    for (const el of fileEls) {
+      if (el.querySelector('code')?.textContent === filePath) {
+        el.style.opacity = '0.3';
+        el.querySelector('.conflict-file-actions').innerHTML = `<span style="color:#22c55e;font-size:12px">✓ ${strategy === 'ours' ? '내 것' : '팀 것'}</span>`;
+      }
+    }
+    if (result.remaining === 0) {
+      // All resolved — auto finalize
+      await api('POST', `/api/playgrounds/${conflictCampName}/resolve-finalize`);
+      document.getElementById('conflict-modal').classList.remove('open');
+      toast('모든 충돌이 해결되었습니다!', 'success');
+      conflictCampName = null;
+    }
+  } catch (err) {
+    toast(`파일 해결 실패: ${err.message}`, 'error');
   }
 };
 

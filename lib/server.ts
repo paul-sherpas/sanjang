@@ -11,7 +11,7 @@ import { detectTestCommand, loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
 import { buildChangeReport, generateReportSummary } from "./engine/change-report.ts";
 import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
-import { buildConflictPrompt, parseConflictFiles } from "./engine/conflict.ts";
+import { buildConflictPrompt, parseConflictFiles, parseConflictSections } from "./engine/conflict.ts";
 import { buildDiagnostics } from "./engine/diagnostics.ts";
 import { getMainServerState, startMainServer, stopMainServer } from "./engine/main-server.ts";
 import { aiSlugify, slugify } from "./engine/naming.ts";
@@ -1495,7 +1495,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             stdio: "pipe",
           }).stdout || "";
         const conflictFiles = parseConflictFiles(statusOut);
-        res.json({ synced: false, conflict: true, conflictFiles, message: "충돌이 있습니다. 어떻게 할까요?" });
+        const conflictDetails = conflictFiles.map((f) => {
+          try {
+            const content = readFileSync(join(campPath(name), f), "utf8");
+            return { path: f, sections: parseConflictSections(content) };
+          } catch { return { path: f, sections: [] }; }
+        });
+        res.json({ synced: false, conflict: true, conflictFiles, conflictDetails, message: "충돌이 있습니다. 어떻게 할까요?" });
       } else {
         broadcast({ type: "playground-synced", name });
         res.json({ synced: true, message: "최신 버전이 반영되었습니다." });
@@ -1509,7 +1515,13 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             stdio: "pipe",
           }).stdout || "";
         const conflictFiles = parseConflictFiles(statusOut);
-        res.json({ synced: false, conflict: true, conflictFiles, message: "충돌이 있습니다. 어떻게 할까요?" });
+        const conflictDetails = conflictFiles.map((f) => {
+          try {
+            const content = readFileSync(join(campPath(name), f), "utf8");
+            return { path: f, sections: parseConflictSections(content) };
+          } catch { return { path: f, sections: [] }; }
+        });
+        res.json({ synced: false, conflict: true, conflictFiles, conflictDetails, message: "충돌이 있습니다. 어떻게 할까요?" });
       } else {
         res.status(500).json({ error: (err as Error).message });
       }
@@ -1603,6 +1615,45 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     const wtPath = campPath(name);
     spawnSync("git", ["-C", wtPath, "merge", "--abort"], { stdio: "pipe" });
     res.json({ aborted: true });
+  });
+
+  // POST /api/playgrounds/:name/resolve-file — resolve a single file
+  app.post("/api/playgrounds/:name/resolve-file", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const { path: filePath, strategy } = req.body ?? {};
+    if (!getOne(name)) return res.status(404).json({ error: "not found" });
+    if (!filePath || !["ours", "theirs"].includes(strategy)) {
+      return res.status(400).json({ error: "path and strategy (ours/theirs) required" });
+    }
+    const wtPath = campPath(name);
+    spawnSync("git", ["-C", wtPath, "checkout", `--${strategy}`, "--", filePath], { stdio: "pipe" });
+    spawnSync("git", ["-C", wtPath, "add", "--", filePath], { stdio: "pipe" });
+
+    // Check if all conflicts are resolved
+    const statusOut = spawnSync("git", ["-C", wtPath, "status", "--porcelain"], {
+      encoding: "utf8",
+      stdio: "pipe",
+    }).stdout || "";
+    const remaining = parseConflictFiles(statusOut);
+
+    res.json({ resolved: true, file: filePath, strategy, remaining: remaining.length });
+  });
+
+  // POST /api/playgrounds/:name/resolve-finalize — commit after all files resolved
+  app.post("/api/playgrounds/:name/resolve-finalize", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    if (!getOne(name)) return res.status(404).json({ error: "not found" });
+    const wtPath = campPath(name);
+    const result = spawnSync("git", ["-C", wtPath, "commit", "--no-edit"], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    if (result.status === 0) {
+      broadcast({ type: "conflict-resolved", name });
+      res.json({ finalized: true });
+    } else {
+      res.status(500).json({ error: (result.stderr || "").trim() || "커밋 실패" });
+    }
   });
 
   // POST /api/playgrounds/:name/test — run test command and stream output

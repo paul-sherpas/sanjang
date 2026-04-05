@@ -16,6 +16,58 @@ export function parseConflictFiles(statusOutput: string | null | undefined): str
 }
 
 /**
+ * A single conflict section within a file.
+ */
+export interface ConflictSection {
+  ours: string;
+  theirs: string;
+  startLine: number;
+}
+
+/**
+ * Parse conflict markers from file content.
+ * Returns an array of conflict sections found in the file.
+ */
+export function parseConflictSections(content: string): ConflictSection[] {
+  const lines = content.split("\n");
+  const sections: ConflictSection[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i]!.startsWith("<<<<<<<")) {
+      const startLine = i + 1;
+      const oursLines: string[] = [];
+      const theirsLines: string[] = [];
+      let inTheirs = false;
+      i++;
+
+      while (i < lines.length) {
+        const line = lines[i]!;
+        if (line.startsWith("=======")) {
+          inTheirs = true;
+        } else if (line.startsWith(">>>>>>>")) {
+          break;
+        } else if (inTheirs) {
+          theirsLines.push(line);
+        } else {
+          oursLines.push(line);
+        }
+        i++;
+      }
+
+      sections.push({
+        ours: oursLines.join("\n"),
+        theirs: theirsLines.join("\n"),
+        startLine,
+      });
+    }
+    i++;
+  }
+
+  return sections;
+}
+
+/**
  * Build a Claude prompt to resolve merge conflicts.
  */
 export function buildConflictPrompt(conflictFiles: string[]): string {
