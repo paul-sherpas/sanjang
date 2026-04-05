@@ -2168,31 +2168,40 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
     // Dashboard static files are already handled by express.static above
 
-    // Determine target camp port
+    // Determine target dev server port (camp or main comparison server)
     const referer = req.headers.referer || "";
     const refMatch = /\/preview\/(\d+)/.exec(referer);
     const camps = getAll();
     const runningCamps = camps.filter((c) => c.status === "running");
+    const mainState = getMainServerState();
 
-    let campPort: number | null = null;
+    // Build set of all known dev server ports
+    const knownPorts = new Set(camps.map((c) => c.fePort));
+    if (mainState.status === "running" && mainState.port) knownPorts.add(mainState.port);
+
+    let targetPort: number | null = null;
     if (refMatch) {
       const port = parseInt(refMatch[1]!, 10);
-      if (camps.some((c) => c.fePort === port)) campPort = port;
+      if (knownPorts.has(port)) targetPort = port;
     }
-    // Fall back: if only one running camp, use it
-    if (!campPort && runningCamps.length === 1) {
-      campPort = runningCamps[0]!.fePort;
+    // Fall back: if only one running dev server total, use it
+    const allRunningPorts = [
+      ...runningCamps.map((c) => c.fePort),
+      ...(mainState.status === "running" && mainState.port ? [mainState.port] : []),
+    ];
+    if (!targetPort && allRunningPorts.length === 1) {
+      targetPort = allRunningPorts[0]!;
     }
-    if (!campPort) return next();
+    if (!targetPort) return next();
 
-    // Proxy to the camp's Vite server
+    // Proxy to the target Vite dev server
     const proxyReq = httpRequest(
       {
         hostname: "localhost",
-        port: campPort,
+        port: targetPort,
         path: url,
         method: req.method,
-        headers: { ...req.headers, host: `localhost:${campPort}` },
+        headers: { ...req.headers, host: `localhost:${targetPort}` },
       },
       (proxyRes: IncomingMessage) => {
         res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
