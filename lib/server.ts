@@ -32,6 +32,7 @@ import {
   listBranches,
   removeWorktree,
   setProjectRoot,
+  startBranchRefresh,
 } from "./engine/worktree.ts";
 
 import type { BroadcastMessage, Camp, SanjangConfig } from "./types.ts";
@@ -646,7 +647,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   const projectName = projectRoot.split("/").pop() ?? "project";
   app.get("/api/project", (_req: Request, res: Response) => res.json({ name: projectName }));
 
-  app.get("/api/ports", (_req: Request, res: Response) => res.json(scanPorts()));
+  app.get("/api/ports", async (_req: Request, res: Response) => res.json(await scanPorts()));
 
   app.get("/api/branches", async (_req: Request, res: Response) => {
     try {
@@ -677,7 +678,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       setConfig(freshConfig);
       if (freshConfig.ports) setPortConfig(freshConfig.ports);
 
-      const { slot, fePort, bePort } = allocate(existing);
+      const { slot, fePort, bePort } = await allocate(existing);
       // When portFlag is null, dev server uses its own fixed port
       const actualFePort = freshConfig.dev?.portFlag ? fePort : freshConfig.dev?.port || fePort;
       await addWorktree(name, branch);
@@ -1942,7 +1943,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       setConfig(freshConfig2);
       if (freshConfig2.ports) setPortConfig(freshConfig2.ports);
 
-      const { slot, fePort, bePort } = allocate(existing);
+      const { slot, fePort, bePort } = await allocate(existing);
       const actualFePort2 = freshConfig2.dev?.portFlag ? fePort : freshConfig2.dev?.port || fePort;
       await addWorktree(name, branch);
 
@@ -2215,6 +2216,7 @@ export async function startServer(projectRoot: string, options: CreateAppOptions
   server.listen(port, "127.0.0.1", () => {
     const url = `http://localhost:${port}`;
     console.log(`⛰ 산장 서버 실행 중 — ${url}`);
+    startBranchRefresh();
     if (warpStatus.installed) {
       console.log("  Warp 감지됨 ✓ — 캠프 진입 시 터미널이 자동으로 열립니다");
     } else {

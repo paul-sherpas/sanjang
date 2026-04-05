@@ -29,14 +29,12 @@ function git(): SimpleGit {
   return simpleGit(getProjectRoot());
 }
 
-export async function listBranches(): Promise<BranchInfo[]> {
-  // Best-effort fetch — continue with local refs on network failure
-  try {
-    await git().fetch(["--prune"]);
-  } catch {
-    /* offline is OK */
-  }
+// --- Branch cache ---
+let _branchCache: BranchInfo[] | null = null;
+let _branchCacheTime = 0;
+const BRANCH_CACHE_TTL = 30_000;
 
+async function parseBranches(): Promise<BranchInfo[]> {
   const raw = await git().raw([
     "for-each-ref",
     "--sort=-committerdate",
@@ -63,7 +61,6 @@ export async function listBranches(): Promise<BranchInfo[]> {
   }
 
   const branches = [...map.values()];
-
   for (const b of branches) {
     if (["dev", "main", "master"].includes(b.name)) {
       b.category = "default";
@@ -75,8 +72,35 @@ export async function listBranches(): Promise<BranchInfo[]> {
       b.category = "other";
     }
   }
-
   return branches;
+}
+
+async function refreshBranches(): Promise<BranchInfo[]> {
+  try {
+    await git().fetch(["--prune"]);
+  } catch {
+    /* offline is OK */
+  }
+  const branches = await parseBranches();
+  _branchCache = branches;
+  _branchCacheTime = Date.now();
+  return branches;
+}
+
+export async function listBranches(): Promise<BranchInfo[]> {
+  if (_branchCache && Date.now() - _branchCacheTime < BRANCH_CACHE_TTL) {
+    return _branchCache;
+  }
+  return refreshBranches();
+}
+
+export function invalidateBranchCache(): void {
+  _branchCacheTime = 0;
+}
+
+export function startBranchRefresh(intervalMs = 30_000): ReturnType<typeof setInterval> {
+  refreshBranches().catch(() => {});
+  return setInterval(() => refreshBranches().catch(() => {}), intervalMs);
 }
 
 export async function addWorktree(name: string, branch: string): Promise<void> {
