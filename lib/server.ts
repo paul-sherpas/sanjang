@@ -588,6 +588,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             const pfx = `/preview/${targetPort}`;
             jsBody = jsBody.replace(/(from\s+["'])\/(?!\/)/g, `$1${pfx}/`);
             jsBody = jsBody.replace(/(import\s*\(\s*["'])\/(?!\/)/g, `$1${pfx}/`);
+            // Static side-effect imports: import "/src/index.css"
+            jsBody = jsBody.replace(/(import\s+["'])\/(?!\/)/g, `$1${pfx}/`);
+            // Rewrite Vite's base variable so HMR dynamic imports use the proxy path
+            jsBody = jsBody.replace(/base\s*=\s*"\/"\s*\|\|\s*"\/"/g, `base = "${pfx}/" || "${pfx}/"`);
             const jsHeaders = { ...proxyRes.headers };
             delete jsHeaders["content-length"];
             delete jsHeaders["content-encoding"];
@@ -616,6 +620,7 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
           body = body.replace(/((?:src|href)=["'])\/(?!\/)/g, `$1${prefix}/`);
           body = body.replace(/(from\s+["'])\/(?!\/)/g, `$1${prefix}/`);
           body = body.replace(/(import\s*\(\s*["'])\/(?!\/)/g, `$1${prefix}/`);
+          body = body.replace(/(import\s+["'])\/(?!\/)/g, `$1${prefix}/`);
 
           // Inject before </head> or </body> or at end
           if (body.includes("</head>")) {
