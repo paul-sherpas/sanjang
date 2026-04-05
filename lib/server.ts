@@ -1036,6 +1036,43 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     }
   });
 
+  // GET /api/playgrounds/:name/diff — full diff or per-file diff (?file=path)
+  app.get("/api/playgrounds/:name/diff", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    if (!getOne(name)) return res.status(404).json({ error: "not found" });
+    try {
+      const wtPath = campPath(name);
+      const filePath = typeof req.query.file === "string" ? req.query.file : null;
+
+      if (filePath) {
+        // Per-file diff
+        const tracked = spawnSync("git", ["-C", wtPath, "diff", "--", filePath], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }).stdout || "";
+        if (tracked) {
+          return res.json({ type: "diff", diff: tracked, path: filePath });
+        }
+        // Might be untracked (new file) — read content
+        const fullPath = join(wtPath, filePath);
+        if (existsSync(fullPath)) {
+          const content = readFileSync(fullPath, "utf8");
+          return res.json({ type: "new", content, path: filePath });
+        }
+        return res.json({ type: "deleted", diff: "", path: filePath });
+      }
+
+      // Full diff
+      const diff = spawnSync("git", ["-C", wtPath, "diff"], {
+        encoding: "utf8",
+        stdio: "pipe",
+      }).stdout || "";
+      res.json({ type: "diff", diff });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // GET /api/playgrounds/:name/change-report — 구조화된 변경 리포트 (changes-summary 대체)
   app.get("/api/playgrounds/:name/change-report", async (req: NameReq, res: Response) => {
     const { name } = req.params;

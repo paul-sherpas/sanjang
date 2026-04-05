@@ -968,6 +968,49 @@ header h1::before {
   font-weight: 600;
 }
 
+/* Camp switcher dropdown */
+.ws-camp-switcher { position: relative; }
+.ws-camp-switch-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.ws-camp-switch-btn:hover { border-color: var(--border-subtle); background: var(--surface); }
+.ws-camp-switch-btn::after { content: ' ▾'; font-size: 10px; color: var(--text-muted); }
+.ws-camp-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  min-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 4px;
+  margin-top: 4px;
+}
+.ws-camp-dropdown.open { display: block; }
+.ws-camp-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ws-camp-dd-item:hover { background: var(--surface); }
+.ws-camp-dd-name { font-weight: 500; color: var(--text); }
+.ws-camp-dd-branch { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+.ws-camp-dd-empty { padding: 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
+
 /* Preview — full screen behind topbar */
 .ws-preview-full {
   position: absolute;
@@ -1166,6 +1209,23 @@ header h1::before {
   gap: 8px;
   padding: 3px 0;
   font-size: 13px;
+}
+.ws-file-clickable { cursor: pointer; border-radius: 4px; padding: 3px 4px; }
+.ws-file-clickable:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* Diff modal */
+.modal-wide { max-width: 720px; width: 90vw; }
+.diff-content { max-height: 60vh; overflow: auto; }
+.diff-header { font-size: 13px; font-weight: 600; color: var(--text-muted); padding: 8px 0 4px; }
+.diff-pre { margin: 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+.diff-line { padding: 0 8px; }
+.diff-line-add { background: #dcfce7; color: #166534; }
+.diff-line-del { background: #fef2f2; color: #991b1b; }
+.diff-line-hunk { background: var(--surface); color: var(--accent); font-weight: 600; margin-top: 8px; }
+.diff-line-meta { color: var(--text-muted); font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .diff-line-add { background: #052e16; color: #86efac; }
+  .diff-line-del { background: #450a0a; color: #fca5a5; }
 }
 
 .ws-action-item {

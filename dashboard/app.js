@@ -372,7 +372,7 @@ function handleWsMessage(msg) {
         if (summaryText2) summaryText2.textContent = `${data.count}개 파일 변경됨`;
         changesEl2.innerHTML = data.files.map(f => {
           const isNew = !prevPaths.has(f.path);
-          return `<div class="ws-file-item${isNew ? ' ws-file-new' : ''}">
+          return `<div class="ws-file-item ws-file-clickable${isNew ? ' ws-file-new' : ''}" onclick="showDiff('${escHtml(currentWorkspace)}','${escHtml(f.path)}')">
             <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
             <span>${escHtml(f.path)}</span>
           </div>`;
@@ -1065,6 +1065,60 @@ window.closeChangesModal = function() {
   changesModalName = null;
 };
 
+// ---------------------------------------------------------------------------
+// Diff Modal
+// ---------------------------------------------------------------------------
+
+window.showDiff = async function showDiff(campName, filePath) {
+  const modal = document.getElementById('diff-modal');
+  const title = document.getElementById('diff-modal-title');
+  const content = document.getElementById('diff-content');
+  if (!modal || !content) return;
+
+  title.textContent = filePath;
+  content.innerHTML = '<div style="color:var(--text-muted);padding:16px">불러오는 중...</div>';
+  modal.classList.add('open');
+
+  try {
+    const data = await api('GET', `/api/playgrounds/${campName}/diff?file=${encodeURIComponent(filePath)}`);
+
+    if (data.type === 'new') {
+      content.innerHTML = `<div class="diff-header">새 파일</div><pre class="diff-pre">${escHtml(data.content)}</pre>`;
+    } else if (data.type === 'deleted') {
+      content.innerHTML = `<div class="diff-header">삭제된 파일</div>`;
+    } else {
+      content.innerHTML = renderDiff(data.diff);
+    }
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--status-error-fg);padding:16px">${escHtml(err.message)}</div>`;
+  }
+};
+
+window.closeDiffModal = function() {
+  document.getElementById('diff-modal').classList.remove('open');
+};
+
+function renderDiff(diff) {
+  if (!diff.trim()) return '<div style="color:var(--text-muted);padding:16px">변경 내용 없음</div>';
+  const lines = diff.split('\n');
+  const html = lines.map(line => {
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      return `<div class="diff-line diff-line-meta">${escHtml(line)}</div>`;
+    }
+    if (line.startsWith('@@')) {
+      return `<div class="diff-line diff-line-hunk">${escHtml(line)}</div>`;
+    }
+    if (line.startsWith('+')) {
+      return `<div class="diff-line diff-line-add">${escHtml(line)}</div>`;
+    }
+    if (line.startsWith('-')) {
+      return `<div class="diff-line diff-line-del">${escHtml(line)}</div>`;
+    }
+    return `<div class="diff-line">${escHtml(line)}</div>`;
+  }).join('');
+  return `<pre class="diff-pre">${html}</pre>`;
+}
+
 // 행위 단위 되돌리기
 window.revertAction = async function revertAction(actionIndex) {
   if (!changesModalName) return;
@@ -1302,6 +1356,71 @@ function exitWorkspace() {
 }
 window.exitWorkspace = exitWorkspace;
 
+// ---------------------------------------------------------------------------
+// Quick Camp Switcher
+// ---------------------------------------------------------------------------
+
+window.toggleCampSwitcher = function toggleCampSwitcher() {
+  const dropdown = document.getElementById('ws-camp-dropdown');
+  if (!dropdown) return;
+  const isOpen = dropdown.classList.toggle('open');
+  if (!isOpen) return;
+
+  const camps = [...playgrounds.values()];
+  if (camps.length <= 1) {
+    dropdown.innerHTML = '<div class="ws-camp-dd-empty">다른 캠프 없음</div>';
+    return;
+  }
+  dropdown.innerHTML = camps
+    .filter(c => c.name !== currentWorkspace)
+    .map(c => {
+      const status = c.status === 'running' ? '🟢' : c.status === 'error' ? '🔴' : '⚪';
+      return `<div class="ws-camp-dd-item" onclick="switchWorkspace('${escHtml(c.name)}')">
+        <span>${status}</span>
+        <span class="ws-camp-dd-name">${escHtml(c.name)}</span>
+        <span class="ws-camp-dd-branch">${escHtml(c.branch)}</span>
+      </div>`;
+    }).join('');
+};
+
+window.switchWorkspace = async function switchWorkspace(name) {
+  // Close dropdown
+  const dropdown = document.getElementById('ws-camp-dropdown');
+  if (dropdown) dropdown.classList.remove('open');
+
+  // Clear devtools state
+  browserErrors.length = 0;
+  browserConsole.length = 0;
+  networkRequests.length = 0;
+  clearBrowserErrors();
+  clearBrowserConsole();
+  clearNetworkRequests();
+
+  currentWorkspace = name;
+  try {
+    const data = await api('POST', `/api/playgrounds/${name}/enter`);
+    renderWorkspace(data);
+  } catch (err) {
+    toast(`캠프 전환 실패: ${err.message}`, 'error');
+    exitWorkspace();
+  }
+};
+
+// Cmd+K / Ctrl+K shortcut for camp switcher
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    if (currentWorkspace) toggleCampSwitcher();
+  }
+});
+
+// Close dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('ws-camp-dropdown');
+  const switcher = e.target.closest?.('.ws-camp-switcher');
+  if (dropdown && !switcher) dropdown.classList.remove('open');
+});
+
 async function fetchAndRenderReport(campName, withAi = false) {
   const section = document.getElementById('ws-report-section');
   if (!section) return;
@@ -1435,7 +1554,7 @@ function renderWorkspace(data) {
     saveBtn.textContent = '💾 세이브하기';
     saveBtn.disabled = false;
     changesEl.innerHTML = changes.files.map(f =>
-      `<div class="ws-file-item">
+      `<div class="ws-file-item ws-file-clickable" onclick="showDiff('${escHtml(camp.name)}','${escHtml(f.path)}')">
         <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
         <span>${escHtml(f.path)}</span>
       </div>`
@@ -1763,7 +1882,7 @@ function startWorkspacePolling(name) {
         changesEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px">변경 없음</span>';
       } else {
         changesEl.innerHTML = data.files.map(f =>
-          `<div class="ws-file-item">
+          `<div class="ws-file-item ws-file-clickable" onclick="showDiff('${escHtml(currentWorkspace)}','${escHtml(f.path)}')">
             <span class="changes-status changes-status-${f.status === '수정' ? 'mod' : f.status === '새 파일' ? 'new' : 'del'}">${escHtml(f.status)}</span>
             <span>${escHtml(f.path)}</span>
           </div>`

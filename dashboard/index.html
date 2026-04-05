@@ -65,7 +65,10 @@
     <!-- Top bar — minimal, over the preview -->
     <div class="ws-topbar">
       <button class="btn btn-ghost btn-sm" onclick="exitWorkspace()">← 목록</button>
-      <span class="workspace-title" id="ws-title"></span>
+      <div class="ws-camp-switcher">
+        <button class="ws-camp-switch-btn" id="ws-title" onclick="toggleCampSwitcher()"></button>
+        <div class="ws-camp-dropdown" id="ws-camp-dropdown"></div>
+      </div>
       <span class="workspace-status" id="ws-status"></span>
       <div class="ws-mini-char" id="ws-mini-char"></div>
       <div class="ws-quest" id="ws-quest">
@@ -253,6 +256,17 @@
       <div class="changes-file-list" id="changes-file-list"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeChangesModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff Modal -->
+  <div class="modal-backdrop" id="diff-modal">
+    <div class="modal modal-wide" role="dialog" aria-modal="true">
+      <h2 id="diff-modal-title">변경 내용</h2>
+      <div class="diff-content" id="diff-content"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeDiffModal()">닫기</button>
       </div>
     </div>
   </div>
