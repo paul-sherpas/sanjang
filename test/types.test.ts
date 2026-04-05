@@ -25,6 +25,7 @@ describe("types", () => {
       copyFiles: [".env"],
       backend: null,
       ports: { fe: { base: 3000, slots: 8 }, be: { base: 8000, slots: 8 } },
+      test: null,
     };
     assert.equal(config.dev.command, "npm run dev");
     assert.equal(config.setup, "npm install");

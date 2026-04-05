@@ -21,6 +21,7 @@ const DEFAULTS: SanjangConfig = {
     fe: { base: 3000, slots: 8 },
     be: { base: 8000, slots: 8 },
   },
+  test: null,
 };
 
 /**
@@ -66,7 +67,32 @@ function mergeConfig(user: Record<string, unknown>): SanjangConfig {
     };
   }
 
+  if (user.test) {
+    config.test = typeof user.test === "string"
+      ? { command: user.test }
+      : (user.test as SanjangConfig["test"]);
+  }
+
   return config;
+}
+
+/**
+ * Auto-detect a test command from package.json.
+ * Returns null if no test script found or it's the npm default placeholder.
+ */
+export function detectTestCommand(projectRoot: string, cwd = "."): string | null {
+  const pkgPath = join(projectRoot, cwd, "package.json");
+  if (!existsSync(pkgPath)) return null;
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    const testScript = pkg?.scripts?.test;
+    if (typeof testScript === "string" && !testScript.includes("no test specified")) {
+      return "npm test";
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /**

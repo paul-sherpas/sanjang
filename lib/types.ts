@@ -11,6 +11,7 @@ export interface Camp {
   description?: string;
   baseCommit?: string;
   parentBranch?: string;
+  lastAccessedAt?: string;
 }
 
 export interface DevConfig {
@@ -39,12 +40,18 @@ export interface PortsConfig {
   be: PortRange;
 }
 
+export interface TestConfig {
+  command: string;
+  cwd?: string;
+}
+
 export interface SanjangConfig {
   dev: DevConfig;
   setup: string | null;
   copyFiles: string[];
   backend: BackendConfig | null;
   ports: PortsConfig;
+  test: TestConfig | null;
   _autoDetected?: boolean;
 }
 

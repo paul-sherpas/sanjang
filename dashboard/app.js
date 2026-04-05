@@ -352,6 +352,34 @@ function handleWsMessage(msg) {
       break;
     }
 
+    case 'test-started': {
+      if (!name || currentWorkspace !== name) break;
+      testOutput = '';
+      testRunning = true;
+      renderTestPanel();
+      switchDevTab('test');
+      break;
+    }
+    case 'test-output': {
+      if (!name || !data || currentWorkspace !== name) break;
+      testOutput += data.text;
+      renderTestPanel();
+      break;
+    }
+    case 'test-done': {
+      if (!name || !data || currentWorkspace !== name) break;
+      testRunning = false;
+      testExitCode = data.exitCode;
+      renderTestPanel();
+      const badge = document.getElementById('ws-test-badge');
+      if (badge) {
+        badge.style.display = '';
+        badge.textContent = data.exitCode === 0 ? '✓' : '✗';
+        badge.style.background = data.exitCode === 0 ? '#22c55e' : '#ef4444';
+      }
+      break;
+    }
+
     case 'file-changes': {
       if (!name || !data) break;
       if (currentWorkspace !== name) break;
@@ -2129,6 +2157,49 @@ function clearNetworkRequests() {
   renderNetworkRequests();
 }
 
+// ---------------------------------------------------------------------------
+// Test Runner Panel
+// ---------------------------------------------------------------------------
+
+let testOutput = '';
+let testRunning = false;
+let testExitCode = null;
+
+function renderTestPanel() {
+  const panel = document.getElementById('ws-test-panel');
+  if (!panel) return;
+  let html = '';
+  if (testRunning) {
+    html += '<div class="ws-test-status ws-test-running">실행 중...</div>';
+  } else if (testExitCode !== null) {
+    html += testExitCode === 0
+      ? '<div class="ws-test-status ws-test-pass">✅ 테스트 통과</div>'
+      : '<div class="ws-test-status ws-test-fail">❌ 테스트 실패 (exit ' + testExitCode + ')</div>';
+  }
+  if (testOutput) {
+    html += `<pre class="ws-test-output">${escHtml(testOutput)}</pre>`;
+  }
+  panel.innerHTML = html || '<span style="color:var(--text-muted);font-size:12px">🧪 버튼을 눌러 테스트 실행</span>';
+  // Auto-scroll
+  const pre = panel.querySelector('pre');
+  if (pre) pre.scrollTop = pre.scrollHeight;
+}
+
+window.wsRunTest = async function wsRunTest() {
+  if (!currentWorkspace) return;
+  try {
+    testOutput = '';
+    testRunning = true;
+    testExitCode = null;
+    renderTestPanel();
+    switchDevTab('test');
+    await api('POST', `/api/playgrounds/${currentWorkspace}/test`);
+  } catch (err) {
+    testRunning = false;
+    toast(`테스트 실행 실패: ${err.message}`, 'error');
+  }
+};
+
 // Tab switching for devtools panel
 window.switchDevTab = function switchDevTab(tab) {
   document.querySelectorAll('.ws-devtab-btn').forEach(b => b.classList.remove('ws-devtab-active'));
@@ -2341,7 +2412,65 @@ async function loadPortal() {
   } catch (err) {
     workList.innerHTML = '<div class="portal-empty">작업 목록을 불러올 수 없습니다</div>';
   }
+
+  // Check for stale camps
+  try {
+    const stale = await api('GET', '/api/camps/stale?days=7');
+    const banner = document.getElementById('portal-stale-banner');
+    if (banner && stale.length > 0) {
+      const totalSize = stale.map(s => s.size).join(' + ');
+      banner.style.display = '';
+      banner.innerHTML = `
+        <span>🧹 ${stale.length}개 캠프를 7일 이상 사용하지 않았어요 (${totalSize})</span>
+        <button class="btn btn-ghost btn-sm" onclick="showStaleCleanup()">정리하기</button>
+      `;
+    }
+  } catch { /* ignore */ }
 }
+
+window.showStaleCleanup = async function showStaleCleanup() {
+  try {
+    const stale = await api('GET', '/api/camps/stale?days=7');
+    if (stale.length === 0) { toast('정리할 캠프가 없습니다', 'info'); return; }
+
+    const html = stale.map(s =>
+      `<label class="ws-stale-item">
+        <input type="checkbox" value="${escHtml(s.name)}" checked>
+        <span>${escHtml(s.name)}</span>
+        <span style="color:var(--text-muted);font-size:11px">${escHtml(s.branch)} · ${escHtml(s.size)} · ${s.lastAccessedAt ? new Date(s.lastAccessedAt).toLocaleDateString('ko-KR') : '기록 없음'}</span>
+      </label>`
+    ).join('');
+
+    const modal = document.getElementById('stale-modal');
+    if (!modal) return;
+    document.getElementById('stale-list').innerHTML = html;
+    modal.classList.add('open');
+  } catch (err) {
+    toast(`정리 목록 로드 실패: ${err.message}`, 'error');
+  }
+};
+
+window.confirmStaleCleanup = async function confirmStaleCleanup() {
+  const checked = [...document.querySelectorAll('#stale-list input:checked')].map(el => el.value);
+  if (checked.length === 0) { toast('선택된 캠프가 없습니다', 'info'); return; }
+  if (!confirm(`${checked.length}개 캠프를 삭제합니다. 되돌릴 수 없습니다.`)) return;
+
+  let deleted = 0;
+  for (const name of checked) {
+    try {
+      await api('DELETE', `/api/playgrounds/${name}`);
+      deleted++;
+    } catch { /* continue */ }
+  }
+  toast(`${deleted}개 캠프 정리 완료`, 'success');
+  document.getElementById('stale-modal').classList.remove('open');
+  document.getElementById('portal-stale-banner').style.display = 'none';
+  loadPortal();
+};
+
+window.closeStaleModal = function() {
+  document.getElementById('stale-modal').classList.remove('open');
+};
 
 window.quickStart = async function quickStart() {
   const input = document.getElementById('quickstart-input');

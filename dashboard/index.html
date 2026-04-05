@@ -31,6 +31,9 @@
       </div>
     </div>
 
+    <!-- Stale camp banner -->
+    <div class="portal-stale-banner" id="portal-stale-banner" style="display:none"></div>
+
     <!-- 새로 시작 (핵심 액션, 맨 위) -->
     <div class="portal-section">
       <div class="portal-quickstart">
@@ -79,6 +82,7 @@
         <div class="ws-quest-step" id="ws-step-ship"><div class="ws-quest-dot"></div><span>보내기</span></div>
       </div>
       <div style="flex:1"></div>
+      <button class="btn btn-sub btn-sm" id="ws-test-btn" onclick="wsRunTest()">🧪 테스트</button>
       <button class="btn btn-sub btn-sm" id="ws-terminal-btn" onclick="wsOpenTerminal()">💻 터미널</button>
       <button class="btn btn-sub btn-sm" id="ws-compare-btn" onclick="toggleCompare()" title="원본과 비교">🔀 비교</button>
       <button class="btn btn-sub btn-sm" onclick="togglePanel()">⛰ 패널</button>
@@ -140,6 +144,7 @@
             <button class="ws-devtab-btn ws-devtab-active" data-tab="errors" onclick="switchDevTab('errors')">🔴 에러 <span class="ws-error-badge" id="ws-browser-error-badge" style="display:none">0</span></button>
             <button class="ws-devtab-btn" data-tab="console" onclick="switchDevTab('console')">콘솔 <span class="ws-devtab-badge" id="ws-console-badge" style="display:none">0</span></button>
             <button class="ws-devtab-btn" data-tab="network" onclick="switchDevTab('network')">네트워크 <span class="ws-devtab-badge" id="ws-network-badge" style="display:none">0</span></button>
+            <button class="ws-devtab-btn" data-tab="test" onclick="switchDevTab('test')">🧪 테스트 <span class="ws-devtab-badge ws-test-badge" id="ws-test-badge" style="display:none"></span></button>
             <button class="ws-devtab-btn" data-tab="log" onclick="switchDevTab('log')">📜 로그</button>
           </div>
           <div class="ws-devtab-panel" id="ws-devtab-errors">
@@ -156,6 +161,11 @@
           <div class="ws-devtab-panel" id="ws-devtab-network" style="display:none">
             <div class="ws-network-panel" id="ws-network-panel">
               <span style="color:var(--text-muted);font-size:12px">요청 없음</span>
+            </div>
+          </div>
+          <div class="ws-devtab-panel" id="ws-devtab-test" style="display:none">
+            <div class="ws-test-panel" id="ws-test-panel">
+              <span style="color:var(--text-muted);font-size:12px">🧪 버튼을 눌러 테스트 실행</span>
             </div>
           </div>
           <div class="ws-devtab-panel" id="ws-devtab-log" style="display:none">
@@ -245,6 +255,19 @@
 
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeSnapModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stale Cleanup Modal -->
+  <div class="modal-backdrop" id="stale-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>캠프 정리</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">삭제할 캠프를 선택하세요. 이 작업은 되돌릴 수 없습니다.</p>
+      <div id="stale-list"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeStaleModal()">취소</button>
+        <button class="btn btn-danger" onclick="confirmStaleCleanup()">삭제</button>
       </div>
     </div>
   </div>

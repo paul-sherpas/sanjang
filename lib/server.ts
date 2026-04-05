@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
-import { loadConfig } from "./config.ts";
+import { detectTestCommand, loadConfig } from "./config.ts";
 import { applyCacheToWorktree, buildCache, isCacheValid } from "./engine/cache.ts";
 import { buildChangeReport, generateReportSummary } from "./engine/change-report.ts";
 import { applyConfigFix, suggestConfigFix } from "./engine/config-hotfix.ts";
@@ -955,6 +955,28 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
   // Cache management
   // -------------------------------------------------------------------------
 
+  // GET /api/camps/stale — camps not accessed in N days (default 7)
+  app.get("/api/camps/stale", (_req: Request, res: Response) => {
+    const days = parseInt(String(_req.query.days || "7"), 10);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const camps = getAll();
+    const stale = camps.filter((c) => {
+      if (!c.lastAccessedAt) return true; // never tracked
+      return new Date(c.lastAccessedAt).getTime() < cutoff;
+    });
+    // Get disk usage for stale camps
+    const result = stale.map((c) => {
+      const wtPath = campPath(c.name);
+      let size = "?";
+      try {
+        const du = spawnSync("du", ["-sh", wtPath], { encoding: "utf8", stdio: "pipe", timeout: 5000 });
+        size = du.stdout?.split("\t")[0]?.trim() || "?";
+      } catch { /* */ }
+      return { name: c.name, branch: c.branch, status: c.status, lastAccessedAt: c.lastAccessedAt, size };
+    });
+    res.json(result);
+  });
+
   app.get("/api/cache/status", (_req: Request, res: Response) => {
     const setupCwd = config.dev?.cwd || ".";
     res.json(isCacheValid(projectRoot, setupCwd));
@@ -1583,13 +1605,61 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.json({ aborted: true });
   });
 
-  // Task runner removed — use Claude Code directly in the terminal
+  // POST /api/playgrounds/:name/test — run test command and stream output
+  const testProcs: Map<string, ChildProcess> = new Map();
+
+  app.post("/api/playgrounds/:name/test", (req: NameReq, res: Response) => {
+    const { name } = req.params;
+    const pg = getOne(name);
+    if (!pg) return res.status(404).json({ error: "not found" });
+
+    // Kill existing test if running
+    const existing = testProcs.get(name);
+    if (existing) {
+      try { existing.kill("SIGTERM"); } catch { /* */ }
+      testProcs.delete(name);
+    }
+
+    const wtPath = campPath(name);
+    const testCmd = config.test?.command || detectTestCommand(projectRoot, config.dev.cwd) || "npm test";
+    const testCwd = config.test?.cwd ? join(wtPath, config.test.cwd) : join(wtPath, config.dev.cwd || ".");
+
+    const child = spawn(testCmd, [], {
+      cwd: testCwd,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, FORCE_COLOR: "1", CI: "true" },
+    });
+
+    testProcs.set(name, child);
+    broadcast({ type: "test-started", name });
+
+    child.stdout!.on("data", (d: Buffer) => {
+      broadcast({ type: "test-output", name, data: { text: d.toString() } });
+    });
+    child.stderr!.on("data", (d: Buffer) => {
+      broadcast({ type: "test-output", name, data: { text: d.toString() } });
+    });
+    child.on("close", (code: number | null) => {
+      testProcs.delete(name);
+      broadcast({ type: "test-done", name, data: { exitCode: code ?? 1 } });
+    });
+    child.on("error", (err: Error) => {
+      testProcs.delete(name);
+      broadcast({ type: "test-done", name, data: { exitCode: 1, error: err.message } });
+    });
+
+    res.json({ started: true, command: testCmd });
+  });
 
   // POST /api/playgrounds/:name/enter — 캠프 진입 (정보 조회만, 터미널은 별도)
   app.post("/api/playgrounds/:name/enter", async (req: NameReq, res: Response) => {
     const { name } = req.params;
     const pg = getOne(name);
     if (!pg) return res.status(404).json({ error: "not found" });
+
+    // Track last access
+    upsert({ ...pg, lastAccessedAt: new Date().toISOString() });
 
     const wtPath = campPath(name);
 
