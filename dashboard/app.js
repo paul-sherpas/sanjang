@@ -1545,6 +1545,11 @@ async function fetchAndRenderReport(campName, withAi = false) {
     if (changeSummaryText && report.summary) {
       changeSummaryText.textContent = `⚠️ 저장 안 됨 — ${report.summary}`;
     }
+    // Ensure save button is visible when there are changes
+    const saveBtn = document.getElementById('ws-save-btn');
+    if (saveBtn && report.totalCount > 0) {
+      saveBtn.style.display = '';
+    }
 
     const warningsEl = document.getElementById('ws-report-warnings');
     if (report.warnings.length > 0) {
