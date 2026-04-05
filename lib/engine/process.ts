@@ -174,6 +174,8 @@ async function ensureBackend(onEvent: EventCallback): Promise<void> {
 interface StartCampParams {
   name: string;
   fePort: number;
+  /** Ports reserved by other camps — detected port must not collide with these */
+  reservedPorts?: Set<number>;
 }
 
 export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Promise<number> {
@@ -203,7 +205,11 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
   onEvent({ type: "status", data: "starting-frontend" });
 
   // Build command — try to pass port flag if available, but always verify via stdout
-  const fullCommand = dev.portFlag ? `${dev.command} ${dev.portFlag} ${fePort}` : dev.command;
+  // npm/yarn/pnpm run require "--" before flags to forward them to the underlying script
+  const needsSeparator = dev.portFlag && /\b(npm|yarn|pnpm)\s+run\b/.test(dev.command);
+  const fullCommand = dev.portFlag
+    ? `${dev.command}${needsSeparator ? " --" : ""} ${dev.portFlag} ${fePort}`
+    : dev.command;
   const cwd = dev.cwd ? join(wtPath, dev.cwd) : wtPath;
 
   const feProc = spawn(fullCommand, [], {
@@ -234,6 +240,27 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
   const detectedPort = await detectPortFromStdout(entry.feLogs, 90_000);
   if (!detectedPort) {
     throw new Error("dev 서버가 시작되지 않았습니다. 로그를 확인하세요.");
+  }
+
+  // Validate: detected port must not collide with another camp's port
+  if (pg.reservedPorts?.has(detectedPort)) {
+    onEvent({
+      type: "log",
+      source: "sanjang",
+      data: `⚠️ 포트 충돌 감지: dev 서버가 ${fePort} 대신 ${detectedPort}을 사용했고, 다른 캠프와 겹칩니다. 프로세스를 종료합니다.`,
+    });
+    stopCamp(name);
+    throw new Error(
+      `포트 충돌: dev 서버가 :${detectedPort}에 바인딩했지만, 다른 캠프가 이미 사용 중입니다. 해당 캠프를 정리하거나 포트를 확인하세요.`,
+    );
+  }
+
+  if (detectedPort !== fePort) {
+    onEvent({
+      type: "log",
+      source: "sanjang",
+      data: `ℹ️ dev 서버가 요청한 포트(${fePort}) 대신 ${detectedPort}을 사용합니다.`,
+    });
   }
 
   const url = `http://localhost:${detectedPort}`;

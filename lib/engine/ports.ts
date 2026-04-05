@@ -43,13 +43,17 @@ export function scanPorts(): PortStatus[] {
   return status;
 }
 
-export function allocate(existingCamps: Pick<Camp, "slot">[]): PortAllocation {
+export function allocate(existingCamps: Pick<Camp, "slot" | "fePort" | "bePort">[]): PortAllocation {
   const usedSlots = new Set(existingCamps.map((p) => p.slot));
+  // Also avoid ports that other camps are actually using (may differ from slot-derived ports)
+  const usedFePorts = new Set(existingCamps.map((p) => p.fePort));
+  const usedBePorts = new Set(existingCamps.map((p) => p.bePort));
   const maxSlots = portConfig.fe.slots;
 
   for (let slot = 1; slot < maxSlots; slot++) {
     if (usedSlots.has(slot)) continue;
     const { fePort, bePort } = portsForSlot(slot);
+    if (usedFePorts.has(fePort) || usedBePorts.has(bePort)) continue;
     if (!isPortBusy(fePort) && !isPortBusy(bePort)) {
       return { slot, fePort, bePort };
     }
