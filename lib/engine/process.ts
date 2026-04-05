@@ -225,6 +225,7 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
     },
     stdio: ["ignore", "pipe", "pipe"],
     shell: true,
+    detached: true,
   });
 
   entry.feProc = feProc;
@@ -274,12 +275,25 @@ export function stopCamp(name: string): void {
   const entry = procs.get(name);
   if (!entry) return;
   if (entry.feProc && !entry.feProc.killed) {
-    entry.feProc.kill("SIGTERM");
+    const pid = entry.feProc.pid;
+    // Kill the entire process group (shell + children) — shell: true spawns
+    // a shell wrapper, so SIGTERM on the shell alone leaves the child alive.
+    if (pid) {
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        // Process group may not exist; fall back to direct kill
+        entry.feProc.kill("SIGTERM");
+      }
+    } else {
+      entry.feProc.kill("SIGTERM");
+    }
     // SIGKILL fallback if still alive after 5s
     const proc = entry.feProc;
     setTimeout(() => {
       try {
-        if (!proc.killed) proc.kill("SIGKILL");
+        if (!proc.killed && pid) process.kill(-pid, "SIGKILL");
+        else if (!proc.killed) proc.kill("SIGKILL");
       } catch {
         /* already dead */
       }

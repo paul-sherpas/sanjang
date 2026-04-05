@@ -69,6 +69,7 @@ interface CreateAppResult {
   runningTasks: Map<string, ChildProcess>;
   warpStatus: { installed: boolean };
   watchers: Map<string, CampWatcher>;
+  healthCheckTimer: NodeJS.Timeout;
 }
 
 interface WorkItem {
@@ -346,6 +347,44 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       autosaveTimers.delete(name);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Periodic health check — detect dead "running" camps and auto-update state
+  // ---------------------------------------------------------------------------
+  const HEALTH_CHECK_INTERVAL = 15_000; // 15s
+
+  function startHealthCheck(): NodeJS.Timeout {
+    return setInterval(async () => {
+      const camps = getAll();
+      for (const camp of camps) {
+        if (camp.status !== "running" || !camp.fePort) continue;
+        try {
+          const res = await fetch(`http://localhost:${camp.fePort}/`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          // Any response (even 4xx) means the server is alive
+          if (!res.ok && res.status >= 500) throw new Error(`HTTP ${res.status}`);
+        } catch {
+          // Port is dead — update state and notify dashboard
+          upsert({ ...camp, status: "stopped" });
+          broadcast({
+            type: "playground-status",
+            name: camp.name,
+            data: { status: "stopped", reason: "health-check" },
+          });
+          broadcast({
+            type: "log",
+            name: camp.name,
+            source: "sanjang",
+            data: `⚠️ 헬스체크 실패: :${camp.fePort} 응답 없음 → stopped 처리`,
+          });
+          stopWatcher(camp.name);
+        }
+      }
+    }, HEALTH_CHECK_INTERVAL);
+  }
+
+  const healthCheckTimer = startHealthCheck();
 
   // Express app
   const app = express();
@@ -2095,11 +2134,11 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
     res.sendFile(join(dashboardDir, "index.html"));
   });
 
-  return { app, server, port, runningTasks, warpStatus, watchers };
+  return { app, server, port, runningTasks, warpStatus, watchers, healthCheckTimer };
 }
 
 export async function startServer(projectRoot: string, options: CreateAppOptions = {}): Promise<Server> {
-  const { server, port, runningTasks, warpStatus, watchers } = await createApp(projectRoot, options);
+  const { server, port, runningTasks, warpStatus, watchers, healthCheckTimer } = await createApp(projectRoot, options);
   server.listen(port, "127.0.0.1", () => {
     const url = `http://localhost:${port}`;
     console.log(`⛰ 산장 서버 실행 중 — ${url}`);
@@ -2120,6 +2159,7 @@ export async function startServer(projectRoot: string, options: CreateAppOptions
   // Graceful shutdown
   function shutdown(): void {
     console.log("\n⛰ 산장 종료 중...");
+    clearInterval(healthCheckTimer);
     for (const [, child] of runningTasks) {
       try {
         child.kill("SIGTERM");
