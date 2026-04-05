@@ -384,24 +384,6 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
             data: `⚠️ 헬스체크 실패: :${camp.fePort} 응답 없음 → stopped 처리`,
           });
           stopWatcher(camp.name);
-          continue;
-        }
-
-        // Check 2: Is the proxy path working? (through sanjang)
-        try {
-          const proxyRes = await fetch(`http://localhost:${port}/preview/${camp.fePort}/`, {
-            signal: AbortSignal.timeout(5000),
-          });
-          if (proxyRes.status === 502) {
-            broadcast({
-              type: "log",
-              name: camp.name,
-              source: "sanjang",
-              data: `⚠️ 프록시 헬스체크: :${camp.fePort} 직접 접속은 되지만 프록시(502) 실패`,
-            });
-          }
-        } catch {
-          // Proxy check failure is non-fatal — just log
         }
       }
     }, HEALTH_CHECK_INTERVAL);
@@ -2081,12 +2063,10 @@ export async function createApp(projectRoot: string, options: CreateAppOptions =
       return res.json(mainState);
     }
     try {
-      await startMainServer(
-        projectRoot,
-        config,
-        (port) => { broadcast({ type: "compare-ready", data: { port } }); },
-        (msg) => { broadcast({ type: "log", name: "__main__", source: "sanjang", data: msg }); },
-      );
+      await startMainServer(projectRoot, config, {
+        onReady: (port) => { broadcast({ type: "compare-ready", data: { port } }); },
+        onLog: (msg) => { broadcast({ type: "log", name: "__main__", source: "sanjang", data: msg }); },
+      });
       res.json(getMainServerState());
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });

@@ -2453,12 +2453,7 @@ details.ws-commit-item[open] .ws-commit-arrow { transform: rotate(90deg); }
 .ws-preview-main { display: none; flex: 1; flex-direction: column; border-left: 2px solid var(--accent); position: relative; }
 .ws-preview-main.hidden { display: none !important; }
 .ws-split-view .ws-preview-full,
-.ws-split-view .ws-preview-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.ws-split-view .ws-preview-full { position: relative; }
-.ws-split-view .ws-preview-main { position: relative; }
-/* Override absolute positioning in split-view so flex works */
-.ws-split-view .ws-preview-full,
-.ws-split-view .ws-preview-main { position: relative !important; top: auto !important; left: auto !important; right: auto !important; bottom: auto !important; }
+.ws-split-view .ws-preview-main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative !important; top: auto !important; left: auto !important; right: auto !important; bottom: auto !important; }
 .ws-split-view .ws-preview-iframe { width: 100%; height: 100%; border: none; }
 .ws-preview-label { position: absolute; top: 8px; left: 8px; z-index: 10; background: var(--surface); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text-muted); pointer-events: none; }
 .ws-preview-loading { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-muted); font-size: 14px; }

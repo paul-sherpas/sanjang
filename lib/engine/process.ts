@@ -3,6 +3,7 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import type { EventCallback, SanjangConfig } from "../types.ts";
 import { campPath, getProjectRoot } from "./worktree.ts";
+import { buildDevCommand, detectPortFromLogs, killProcessGroup } from "./process-utils.ts";
 
 interface CampProcessEntry {
   feProc: ChildProcess | null;
@@ -27,42 +28,8 @@ export function setConfig(config: SanjangConfig): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Detect actual port from dev server stdout (Vite: "➜  Local: http://localhost:3004/")
-function detectPortFromStdout(logs: string[], timeoutMs: number): Promise<number | null> {
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    // Patterns: Vite "Local:   http://localhost:PORT/", Next "- Local: http://localhost:PORT"
-    const portRe = /https?:\/\/localhost:(\d+)/;
-
-    function check(): void {
-      for (const line of logs) {
-        const match = portRe.exec(line);
-        if (match?.[1]) {
-          const port = parseInt(match[1], 10);
-          // Wait briefly for the port to actually be ready
-          const sock = createConnection({ port, host: "localhost" });
-          sock.once("connect", () => {
-            sock.destroy();
-            resolve(port);
-          });
-          sock.once("error", () => {
-            sock.destroy();
-            // Port printed but not ready yet, retry
-            if (Date.now() < deadline) setTimeout(check, 1000);
-            else resolve(port); // return the port anyway
-          });
-          return;
-        }
-      }
-      if (Date.now() >= deadline) {
-        resolve(null);
-      } else {
-        setTimeout(check, 1000);
-      }
-    }
-    check();
-  });
-}
+// Re-export detectPortFromLogs as the local name used throughout this file
+const detectPortFromStdout = detectPortFromLogs;
 
 function waitForPort(port: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -204,12 +171,7 @@ export async function startCamp(pg: StartCampParams, onEvent: EventCallback): Pr
   onEvent({ type: "log", source: "sanjang", data: "Frontend 준비 중..." });
   onEvent({ type: "status", data: "starting-frontend" });
 
-  // Build command — try to pass port flag if available, but always verify via stdout
-  // npm/yarn/pnpm run require "--" before flags to forward them to the underlying script
-  const needsSeparator = dev.portFlag && /\b(npm|yarn|pnpm)\s+run\b/.test(dev.command);
-  const fullCommand = dev.portFlag
-    ? `${dev.command}${needsSeparator ? " --" : ""} ${dev.portFlag} ${fePort}`
-    : dev.command;
+  const fullCommand = buildDevCommand(dev.command, dev.portFlag, fePort);
   const cwd = dev.cwd ? join(wtPath, dev.cwd) : wtPath;
 
   const feProc = spawn(fullCommand, [], {
@@ -275,21 +237,10 @@ export function stopCamp(name: string): void {
   const entry = procs.get(name);
   if (!entry) return;
   if (entry.feProc && !entry.feProc.killed) {
-    const pid = entry.feProc.pid;
-    // Kill the entire process group (shell + children) — shell: true spawns
-    // a shell wrapper, so SIGTERM on the shell alone leaves the child alive.
-    if (pid) {
-      try {
-        process.kill(-pid, "SIGTERM");
-      } catch {
-        // Process group may not exist; fall back to direct kill
-        entry.feProc.kill("SIGTERM");
-      }
-    } else {
-      entry.feProc.kill("SIGTERM");
-    }
+    killProcessGroup(entry.feProc);
     // SIGKILL fallback if still alive after 5s
     const proc = entry.feProc;
+    const pid = proc.pid;
     setTimeout(() => {
       try {
         if (!proc.killed && pid) process.kill(-pid, "SIGKILL");

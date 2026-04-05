@@ -5,22 +5,22 @@
  */
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { createConnection } from "node:net";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { SanjangConfig } from "../types.ts";
+import { buildDevCommand, detectPortFromLogs, killProcessGroup } from "./process-utils.ts";
 
 interface MainServerState {
   status: "stopped" | "starting" | "running" | "error";
   port: number | null;
   error: string | null;
-  branch: string | null;
 }
 
-let state: MainServerState = { status: "stopped", port: null, error: null, branch: null };
+let state: MainServerState = { status: "stopped", port: null, error: null };
 let proc: ChildProcess | null = null;
 let logs: string[] = [];
 let worktreePath: string | null = null;
+let savedProjectRoot: string | null = null;
 
 export function getMainServerState(): MainServerState {
   return { ...state };
@@ -32,17 +32,14 @@ export function getMainServerLogs(): string[] {
 
 /** Detect the default branch from origin (main, master, dev, etc.) */
 function detectDefaultBranch(projectRoot: string): string {
-  // Try origin/HEAD first
   const headRef = spawnSync("git", ["-C", projectRoot, "symbolic-ref", "refs/remotes/origin/HEAD"], {
     encoding: "utf8",
     stdio: "pipe",
   });
   if (headRef.status === 0 && headRef.stdout.trim()) {
-    // refs/remotes/origin/main → main
     return headRef.stdout.trim().replace("refs/remotes/origin/", "");
   }
 
-  // Fallback: check common names
   for (const name of ["main", "master", "dev", "develop"]) {
     const check = spawnSync("git", ["-C", projectRoot, "rev-parse", "--verify", `origin/${name}`], {
       encoding: "utf8",
@@ -51,7 +48,7 @@ function detectDefaultBranch(projectRoot: string): string {
     if (check.status === 0) return name;
   }
 
-  return "main"; // last resort
+  return "main";
 }
 
 /** Create a git worktree for the comparison server */
@@ -59,17 +56,13 @@ function ensureWorktree(projectRoot: string, branch: string): string {
   const campsDir = join(projectRoot, ".sanjang", "camps");
   const wtPath = join(campsDir, "__main__");
 
-  // Clean up stale worktree if it exists
   if (existsSync(wtPath)) {
-    spawnSync("git", ["-C", projectRoot, "worktree", "remove", "--force", wtPath], {
-      stdio: "pipe",
-    });
+    spawnSync("git", ["-C", projectRoot, "worktree", "remove", "--force", wtPath], { stdio: "pipe" });
     if (existsSync(wtPath)) {
       rmSync(wtPath, { recursive: true, force: true });
     }
   }
 
-  // Try origin first, fall back to local branch
   const hasOrigin = spawnSync("git", ["-C", projectRoot, "remote"], {
     encoding: "utf8",
     stdio: "pipe",
@@ -83,7 +76,6 @@ function ensureWorktree(projectRoot: string, branch: string): string {
     ref = branch;
   }
 
-  // Create worktree
   if (!existsSync(campsDir)) mkdirSync(campsDir, { recursive: true });
   const result = spawnSync("git", ["-C", projectRoot, "worktree", "add", "--detach", wtPath, ref], {
     encoding: "utf8",
@@ -96,7 +88,6 @@ function ensureWorktree(projectRoot: string, branch: string): string {
   return wtPath;
 }
 
-/** Run setup command (npm install, etc.) in the worktree */
 function runSetup(wtPath: string, config: SanjangConfig, onLog: (msg: string) => void): void {
   if (!config.setup) return;
 
@@ -121,39 +112,27 @@ function runSetup(wtPath: string, config: SanjangConfig, onLog: (msg: string) =>
 export async function startMainServer(
   projectRoot: string,
   config: SanjangConfig,
-  onReady?: (port: number) => void,
-  onLog?: (msg: string) => void,
+  callbacks?: { onReady?: (port: number) => void; onLog?: (msg: string) => void },
 ): Promise<void> {
   if (state.status === "running" || state.status === "starting") return;
 
-  const log = onLog ?? (() => {});
-  state = { status: "starting", port: null, error: null, branch: null };
+  const log = callbacks?.onLog ?? (() => {});
+  state = { status: "starting", port: null, error: null };
   logs = [];
+  savedProjectRoot = projectRoot;
 
   try {
-    // 1. Detect default branch
     const branch = detectDefaultBranch(projectRoot);
-    state.branch = branch;
     log(`비교 기준: origin/${branch}`);
 
-    // 2. Create worktree from origin/<branch>
     log("원본 소스 준비 중...");
     const wtPath = ensureWorktree(projectRoot, branch);
     worktreePath = wtPath;
 
-    // 3. Copy gitignored files (node_modules cache, .env, etc.)
-    // We rely on setup (npm install) to handle dependencies
-
-    // 4. Run setup
     runSetup(wtPath, config, log);
 
-    // 5. Start dev server
     const basePort = config.dev.port + 100;
-    const needsSeparator = config.dev.portFlag && /\b(npm|yarn|pnpm)\s+run\b/.test(config.dev.command);
-    const fullCommand = config.dev.portFlag
-      ? `${config.dev.command}${needsSeparator ? " --" : ""} ${config.dev.portFlag} ${basePort}`
-      : config.dev.command;
-
+    const fullCommand = buildDevCommand(config.dev.command, config.dev.portFlag, basePort);
     const cwd = config.dev.cwd ? join(wtPath, config.dev.cwd) : wtPath;
 
     log(`dev 서버 시작: ${fullCommand}`);
@@ -179,99 +158,46 @@ export async function startMainServer(
 
     proc.on("close", (code) => {
       if (state.status !== "stopped") {
-        state = { ...state, status: "stopped", port: null, error: code ? `exit ${code}` : null };
+        state = { status: "stopped", port: null, error: code ? `exit ${code}` : null };
       }
       proc = null;
     });
 
     proc.on("error", (err) => {
-      state = { ...state, status: "error", port: null, error: err.message };
+      state = { status: "error", port: null, error: err.message };
       proc = null;
     });
 
-    const detectedPort = await detectMainPort(logs, basePort, 60_000);
+    const detectedPort = await detectPortFromLogs(logs, 60_000);
     if (detectedPort) {
-      state = { status: "running", port: detectedPort, error: null, branch };
+      state = { status: "running", port: detectedPort, error: null };
       log(`비교 서버 준비 완료 ✓ (origin/${branch}, :${detectedPort})`);
-      onReady?.(detectedPort);
+      callbacks?.onReady?.(detectedPort);
     } else {
-      killProc();
+      if (proc) { killProcessGroup(proc); proc = null; }
       const lastLog = logs.slice(-5).join("\n").trim();
-      state = { status: "error", port: null, error: lastLog || "포트를 감지하지 못했어요", branch };
+      state = { status: "error", port: null, error: lastLog || "포트를 감지하지 못했어요" };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    state = { status: "error", port: null, error: message, branch: state.branch };
+    state = { status: "error", port: null, error: message };
     log(`❌ 비교 서버 시작 실패: ${message}`);
   }
 }
 
-function killProc(): void {
-  if (proc) {
-    const pid = proc.pid;
-    if (pid) {
-      try { process.kill(-pid, "SIGTERM"); } catch { proc?.kill("SIGTERM"); }
-    } else {
-      proc.kill("SIGTERM");
-    }
-    proc = null;
-  }
-}
-
 export function stopMainServer(): void {
-  state = { status: "stopped", port: null, error: null, branch: null };
-  killProc();
+  state = { status: "stopped", port: null, error: null };
+  if (proc) { killProcessGroup(proc); proc = null; }
   logs = [];
 
-  // Clean up worktree
-  if (worktreePath && existsSync(worktreePath)) {
+  if (worktreePath && existsSync(worktreePath) && savedProjectRoot) {
     try {
-      // Find project root from worktree path
-      const campsDir = join(worktreePath, "..");
-      const projectRoot = join(campsDir, "..", "..");
-      spawnSync("git", ["-C", projectRoot, "worktree", "remove", "--force", worktreePath], {
+      spawnSync("git", ["-C", savedProjectRoot, "worktree", "remove", "--force", worktreePath], {
         stdio: "pipe",
       });
     } catch {
-      // Force-delete if git worktree remove fails
       try { rmSync(worktreePath, { recursive: true, force: true }); } catch {}
     }
     worktreePath = null;
   }
-}
-
-function detectMainPort(logLines: string[], _fallbackPort: number, timeoutMs: number): Promise<number | null> {
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    // Strip ANSI codes before matching — Vite injects bold/color around the port number
-    const ansiRe = /\x1b\[[0-9;]*m/g;
-    const portRe = /https?:\/\/localhost:(\d+)/;
-
-    function check(): void {
-      for (const line of logLines) {
-        const match = portRe.exec(line.replace(ansiRe, ""));
-        if (match?.[1]) {
-          const port = parseInt(match[1], 10);
-          const sock = createConnection({ port, host: "localhost" });
-          sock.once("connect", () => {
-            sock.destroy();
-            resolve(port);
-          });
-          sock.once("error", () => {
-            sock.destroy();
-            if (Date.now() < deadline) setTimeout(check, 1000);
-            else resolve(port);
-          });
-          return;
-        }
-      }
-      if (Date.now() >= deadline) {
-        resolve(null);
-      } else {
-        setTimeout(check, 1000);
-      }
-    }
-
-    check();
-  });
 }
